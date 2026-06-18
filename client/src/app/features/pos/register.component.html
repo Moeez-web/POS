@@ -1,0 +1,168 @@
+<div class="flex h-full flex-col">
+  <!-- Held-sale tabs: each tab is a parked cart you can switch between -->
+  <div class="flex items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-3 py-1.5">
+    @for (c of carts(); track c.id; let i = $index) {
+      <button
+        class="flex shrink-0 items-center gap-2 rounded-t-lg px-3 py-1.5 text-sm"
+        [class.bg-brand-50]="activeId() === c.id"
+        [class.text-brand-700]="activeId() === c.id"
+        [class.font-medium]="activeId() === c.id"
+        [class.text-slate-500]="activeId() !== c.id"
+        (click)="switchTo(c.id)"
+        [attr.data-testid]="'cart-tab-' + i">
+        {{ tabLabel(c, i) }}
+        @if (carts().length > 1) {
+          <span class="text-slate-400 hover:text-red-600" (click)="closeCart(c, $event)" title="Discard this sale">✕</span>
+        }
+      </button>
+    }
+    <button class="ml-1 shrink-0 rounded-lg px-3 py-1.5 text-sm text-brand-600 hover:bg-brand-50" (click)="newSale()" data-testid="new-sale">
+      + New sale
+    </button>
+    <button class="ml-auto shrink-0 rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100" (click)="finderOpen.set(true)" title="Find invoice / Refund (F2)" data-testid="open-finder">
+      🔎 Refund <span class="ml-1 rounded bg-slate-200 px-1 text-[10px]">F2</span>
+    </button>
+  </div>
+
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Left: scan & search -->
+    <div class="flex flex-1 flex-col gap-4 p-5">
+      <div class="card p-4">
+        <label class="label">Scan barcode</label>
+        <input #scan class="input text-lg" placeholder="Scan or type a barcode, then Enter"
+               [(ngModel)]="scanCode" (keyup.enter)="onScan()" (blur)="refocusScan()" data-testid="scan-input" autofocus />
+      </div>
+
+      <div class="card flex-1 overflow-hidden p-4">
+        <label class="label">Search products</label>
+        <input class="input" placeholder="Type a name, SKU or scan" (input)="onSearch($any($event.target).value)" data-testid="product-search" />
+        <div class="mt-3 grid grid-cols-2 gap-2 overflow-y-auto">
+          @for (p of searchResults(); track p.id) {
+            <button class="card flex flex-col items-start p-3 text-left hover:border-brand-400" (click)="addProduct(p)" data-testid="search-result">
+              <span class="font-medium">{{ p.name }}</span>
+              <span class="text-xs text-slate-500">{{ p.sku }} · stock {{ p.stock }}</span>
+              <span class="mt-1 font-semibold text-brand-700">{{ p.sale_price_minor | money }}</span>
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: active cart -->
+    <div class="flex w-[380px] flex-col border-l border-slate-200 bg-white">
+      <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <span class="font-semibold">Cart</span>
+        <span class="text-xs text-slate-400">F4 = void last</span>
+      </div>
+      <div class="flex-1 overflow-y-auto p-2">
+        @if (cart().length === 0) {
+          <p class="p-6 text-center text-sm text-slate-400">Scan or search to add items</p>
+        }
+        @for (line of cart(); track line.product.id) {
+          <div class="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-50" data-testid="cart-row">
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium">{{ line.product.name }}</div>
+              <div class="text-xs text-slate-500">
+                {{ line.product.sale_price_minor | money }} each ·
+                <span [class.text-amber-600]="line.qty >= line.product.stock">{{ line.product.stock }} in stock</span>
+              </div>
+            </div>
+            <input class="w-14 rounded border px-2 py-1 text-center text-sm"
+                   [class.border-slate-300]="line.qty < line.product.stock" [class.border-amber-400]="line.qty >= line.product.stock"
+                   type="number" min="1" [max]="line.product.stock"
+                   [ngModel]="line.qty" (ngModelChange)="setQty(line, +$event)" (blur)="onQtyBlur(line, $event)" data-testid="cart-qty" />
+            <div class="w-20 text-right text-sm font-medium" data-testid="cart-line-total">
+              {{ ((line.product.sale_price_minor || 0) * line.qty - line.discount_minor) | money }}
+            </div>
+            <button class="text-slate-400 hover:text-red-600" (click)="remove(line)">✕</button>
+          </div>
+        }
+      </div>
+
+      <div class="space-y-1 border-t border-slate-200 p-4 text-sm">
+        <div class="flex justify-between"><span>Subtotal</span><span>{{ subtotal() | money }}</span></div>
+        <div class="flex justify-between text-slate-500"><span>Tax</span><span>{{ tax() | money }}</span></div>
+        <!-- Discount: amount or percent -->
+        <div class="flex items-center justify-between gap-2">
+          <span>Discount</span>
+          <div class="flex items-center gap-1">
+            <input class="w-20 rounded border border-slate-300 px-2 py-1 text-right text-sm" type="number" min="0"
+                   [ngModel]="discountValue()" (ngModelChange)="discountValue.set(+$event)" data-testid="discount-value" />
+            <div class="flex overflow-hidden rounded border border-slate-300 text-xs">
+              <button class="px-2 py-1" [class.bg-brand-600]="discountMode() === 'amount'" [class.text-white]="discountMode() === 'amount'" (click)="discountMode.set('amount')" data-testid="discount-amount">Amt</button>
+              <button class="px-2 py-1" [class.bg-brand-600]="discountMode() === 'percent'" [class.text-white]="discountMode() === 'percent'" (click)="discountMode.set('percent')" data-testid="discount-percent">%</button>
+            </div>
+          </div>
+        </div>
+        @if (discountMinor() > 0) {
+          <div class="flex justify-between text-green-600"><span>You save</span><span>− {{ discountMinor() | money }}</span></div>
+        }
+        <div class="flex justify-between text-lg font-semibold"><span>Total</span><span data-testid="cart-total">{{ total() | money }}</span></div>
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <button class="btn-ghost" (click)="newSale()" data-testid="hold-btn">Hold / New</button>
+          <button class="btn-primary" (click)="openPay()" [disabled]="cart().length === 0" data-testid="pay-btn">Pay</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Invoice finder / refund (F2) -->
+@if (finderOpen()) {
+  <app-invoice-finder (closed)="finderOpen.set(false); refocusScan()" (resume)="onResume($event)" />
+}
+
+<!-- Payment dialog -->
+@if (paying()) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-sm p-6">
+      <h3 class="mb-3 text-lg font-semibold">Payment</h3>
+
+      <div class="mb-3 flex items-center justify-between rounded-lg bg-slate-100 px-4 py-3">
+        <span class="text-sm text-slate-500">Total to pay</span>
+        <span class="text-2xl font-bold">{{ total() | money }}</span>
+      </div>
+
+      <label class="label">Cash received from customer</label>
+      <input class="input text-xl font-semibold" type="number" min="0"
+             [ngModel]="cashAmount()" (ngModelChange)="cashAmount.set(+$event)" data-testid="cash-amount" autofocus />
+
+      <!-- Quick-tender buttons -->
+      <div class="mt-2 flex flex-wrap gap-2">
+        <button class="btn-ghost px-3 py-1 text-xs" (click)="exactCash()" data-testid="tender-exact">Exact</button>
+        @for (n of notes; track n) {
+          <button class="btn-ghost px-3 py-1 text-xs" (click)="addCash(n)">+{{ n }}</button>
+        }
+        <button class="btn-ghost px-3 py-1 text-xs" (click)="clearCash()">Clear</button>
+      </div>
+
+      <!-- Change to return / shortfall -->
+      @if (isPaidEnough()) {
+        <div class="mt-3 flex items-center justify-between rounded-lg bg-green-50 px-4 py-3">
+          <span class="text-sm font-medium text-green-700">Change to return</span>
+          <span class="text-2xl font-bold text-green-700" data-testid="change">{{ change() | money }}</span>
+        </div>
+      } @else {
+        <div class="mt-3 flex items-center justify-between rounded-lg bg-red-50 px-4 py-3">
+          <span class="text-sm font-medium text-red-700">Still needed</span>
+          <span class="text-2xl font-bold text-red-700" data-testid="shortfall">{{ shortfall() | money }}</span>
+        </div>
+      }
+
+      <!-- Optional customer details -->
+      <div class="mt-3 rounded-lg bg-slate-50 p-3">
+        <p class="mb-2 text-xs font-medium text-slate-500">Customer (optional)</p>
+        <div class="grid grid-cols-2 gap-2">
+          <input class="input" placeholder="Name" [(ngModel)]="payCustomer.name" data-testid="pay-cust-name" />
+          <input class="input" placeholder="Phone" [(ngModel)]="payCustomer.phone" data-testid="pay-cust-phone" />
+        </div>
+        <input class="input mt-2" placeholder="Email" [(ngModel)]="payCustomer.email" data-testid="pay-cust-email" />
+      </div>
+
+      <div class="mt-5 grid grid-cols-2 gap-2">
+        <button class="btn-ghost" (click)="paying.set(false); refocusScan()">Cancel</button>
+        <button class="btn-primary" (click)="confirmPay()" [disabled]="!isPaidEnough()" data-testid="confirm-pay">Complete</button>
+      </div>
+    </div>
+  </div>
+}

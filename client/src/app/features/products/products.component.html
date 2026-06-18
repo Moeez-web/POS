@@ -1,0 +1,169 @@
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold">Products</h1>
+      <p class="text-sm text-slate-500">Add a product with its price and opening stock in one step.</p>
+    </div>
+    <button *appHasPermission="'products.create'" class="btn-primary" (click)="openCreate()" data-testid="new-product">
+      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+      New product
+    </button>
+  </div>
+
+  <div class="flex gap-2">
+    <input class="input max-w-xs" placeholder="🔍 Search or scan barcode" [(ngModel)]="q" (keyup.enter)="search()" data-testid="products-search" />
+    <button class="btn-ghost" (click)="search()">Search</button>
+  </div>
+
+  <!-- Empty state -->
+  @if (!loading() && (page()?.data?.length ?? 0) === 0 && !q) {
+    <div class="card flex flex-col items-center gap-3 p-12 text-center">
+      <div class="text-5xl">📦</div>
+      <h2 class="text-lg font-semibold">No products yet</h2>
+      <p class="max-w-sm text-sm text-slate-500">Add your first product — give it a name, scan its barcode, set the price and how many you have in stock.</p>
+      <button *appHasPermission="'products.create'" class="btn-primary mt-2" (click)="openCreate()">+ Add your first product</button>
+    </div>
+  } @else {
+    <div class="card overflow-hidden">
+      <table class="table">
+        <thead><tr><th>Name</th><th>SKU</th><th>Barcodes</th><th class="text-right">Price</th><th class="text-right">Stock</th><th class="text-right">Actions</th></tr></thead>
+        <tbody>
+          @for (p of page()?.data ?? []; track p.id) {
+            <tr data-testid="product-row">
+              <td class="font-medium">{{ p.name }}</td>
+              <td class="font-mono text-xs text-slate-500">{{ p.sku }}</td>
+              <td class="text-xs text-slate-500">{{ p.barcodes.join(', ') || '—' }}</td>
+              <td class="text-right font-medium">{{ p.sale_price_minor | money }}</td>
+              <td class="text-right" [class.text-amber-600]="p.stock <= p.reorder_level" [class.font-semibold]="p.stock <= p.reorder_level">{{ p.stock }}</td>
+              <td>
+                <div class="flex justify-end gap-1" *appHasPermission="'products.update'">
+                  <button class="icon-btn" (click)="openPrice(p)" title="Edit price" data-testid="edit-price">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6l2-2h6l8 8-8 8-8-8V6z M7.5 7.5h.01"/></svg>
+                  </button>
+                  <button class="icon-btn" (click)="openStock(p)" title="Add stock" data-testid="add-stock">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                  </button>
+                  <button class="icon-btn" (click)="openManage(p)" title="Barcodes" *appHasPermission="'products.barcode.manage'" data-testid="manage-barcodes">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5v14M8 5v14M12 5v14M16 5v14M20 5v14"/></svg>
+                  </button>
+                  <button class="icon-btn" (click)="openEdit(p)" title="Edit details" data-testid="edit-product">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M11 4h-7v16h16v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <button *appHasPermission="'products.delete'" class="icon-btn hover:text-red-600" (click)="deactivate(p)" title="Remove product" data-testid="remove-product">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5h6v2M10 11v6M14 11v6M5 7l1 13h12l1-13"/></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+          @if (!loading() && (page()?.data?.length ?? 0) === 0 && q) {
+            <tr><td colspan="6" class="py-8 text-center text-slate-400">No products match “{{ q }}”.</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <app-paginator [total]="page()?.total || 0" [page]="pageNum" [pageSize]="20" (pageChange)="goPage($event)" />
+  }
+</div>
+
+<!-- Create product (everything in one place) -->
+@if (creating()) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-lg p-6">
+      <h3 class="mb-4 text-lg font-semibold">New product</h3>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="col-span-2"><label class="label">Product name *</label><input class="input" [(ngModel)]="form.name" (ngModelChange)="onName()" data-testid="np-name" autofocus /></div>
+        <div><label class="label">SKU (code) *</label><input class="input font-mono" [(ngModel)]="form.sku" (ngModelChange)="skuTouched = true" data-testid="np-sku" /></div>
+        <div><label class="label">Category</label>
+          <select class="input" [(ngModel)]="form.category_id"><option [ngValue]="null">—</option>@for (c of categories(); track c.id) {<option [ngValue]="c.id">{{ c.name }}</option>}</select>
+        </div>
+        <div><label class="label">Sale price *</label><input class="input" type="number" min="0" step="0.01" [(ngModel)]="form.sale_price" data-testid="np-price" /></div>
+        <div><label class="label">Cost price</label><input class="input" type="number" min="0" step="0.01" [(ngModel)]="form.cost_price" data-testid="np-cost" /></div>
+        <div><label class="label">Opening stock (qty)</label><input class="input" type="number" min="0" [(ngModel)]="form.opening_qty" data-testid="np-qty" /></div>
+        <div><label class="label">Reorder level</label><input class="input" type="number" min="0" [(ngModel)]="form.reorder_level" /></div>
+        <div class="col-span-2">
+          <label class="label">Barcodes — scan or type, then Enter</label>
+          <input class="input" placeholder="🔫 Scan a barcode…" [(ngModel)]="scanNew" (keyup.enter)="addScannedBarcode()" data-testid="np-scan" />
+          @if (newBarcodes().length) {
+            <div class="mt-2 flex flex-wrap gap-2">
+              @for (code of newBarcodes(); track code) {
+                <span class="flex items-center gap-1 rounded bg-slate-100 px-2 py-1 text-xs font-mono">{{ code }} <button class="text-slate-400 hover:text-red-600" (click)="removeNewBarcode(code)">✕</button></span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+      <div class="mt-5 grid grid-cols-2 gap-2">
+        <button class="btn-ghost" (click)="creating.set(false)">Cancel</button>
+        <button class="btn-primary" (click)="saveCreate()" data-testid="np-save">Add product</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Edit details -->
+@if (editing(); as p) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-md p-6">
+      <h3 class="mb-4 text-lg font-semibold">Edit — {{ p.name }}</h3>
+      <div class="space-y-3">
+        <div><label class="label">Name</label><input class="input" [(ngModel)]="editForm.name" /></div>
+        <div><label class="label">Category</label>
+          <select class="input" [(ngModel)]="editForm.category_id"><option [ngValue]="null">—</option>@for (c of categories(); track c.id) {<option [ngValue]="c.id">{{ c.name }}</option>}</select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="label">Tax %</label><input class="input" type="number" [(ngModel)]="editForm.tax_rate" /></div>
+          <div><label class="label">Reorder level</label><input class="input" type="number" [(ngModel)]="editForm.reorder_level" /></div>
+        </div>
+      </div>
+      <div class="mt-5 grid grid-cols-2 gap-2"><button class="btn-ghost" (click)="editing.set(null)">Cancel</button><button class="btn-primary" (click)="saveEdit()" data-testid="edit-save">Save</button></div>
+    </div>
+  </div>
+}
+
+<!-- Edit price -->
+@if (pricing(); as p) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-xs p-6">
+      <h3 class="mb-1 text-lg font-semibold">Price — {{ p.name }}</h3>
+      <p class="mb-4 text-xs text-slate-500">Current: {{ p.sale_price_minor | money }}</p>
+      <label class="label">New sale price</label>
+      <input class="input text-lg" type="number" min="0" step="0.01" [(ngModel)]="newPrice" data-testid="price-input" autofocus />
+      <div class="mt-5 grid grid-cols-2 gap-2"><button class="btn-ghost" (click)="pricing.set(null)">Cancel</button><button class="btn-primary" (click)="savePrice()" data-testid="price-save">Update</button></div>
+    </div>
+  </div>
+}
+
+<!-- Add stock -->
+@if (stocking(); as p) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-sm p-6">
+      <h3 class="mb-1 text-lg font-semibold">Add stock — {{ p.name }}</h3>
+      <p class="mb-4 text-xs text-slate-500">Current stock: {{ p.stock }}</p>
+      <div class="space-y-3">
+        <div><label class="label">Quantity to add</label><input class="input" type="number" min="1" [(ngModel)]="stockForm.qty" data-testid="stock-qty" autofocus /></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="label">Cost (each)</label><input class="input" type="number" min="0" step="0.01" [(ngModel)]="stockForm.cost_price" /></div>
+          <div><label class="label">Sale price</label><input class="input" type="number" min="0" step="0.01" [(ngModel)]="stockForm.sale_price" /></div>
+        </div>
+      </div>
+      <div class="mt-5 grid grid-cols-2 gap-2"><button class="btn-ghost" (click)="stocking.set(null)">Cancel</button><button class="btn-primary" (click)="saveStock()" data-testid="stock-save">Add stock</button></div>
+    </div>
+  </div>
+}
+
+<!-- Barcodes -->
+@if (managing(); as p) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-md p-6">
+      <h3 class="mb-1 text-lg font-semibold">Barcodes — {{ p.name }}</h3>
+      <p class="mb-4 text-xs text-slate-500">Scan a barcode and press Enter to add it. Old &amp; new barcodes all find this product.</p>
+      <input class="input" placeholder="🔫 Scan to add…" [(ngModel)]="scanManage" (keyup.enter)="addBarcodeToProduct()" data-testid="mb-scan" autofocus />
+      <div class="mt-3 flex flex-wrap gap-2">
+        @for (code of p.barcodes; track code) { <span class="rounded bg-slate-100 px-2 py-1 text-xs font-mono">{{ code }}</span> }
+        @if (p.barcodes.length === 0) { <span class="text-xs text-slate-400">No barcodes yet — scan one above.</span> }
+      </div>
+      <div class="mt-5 flex justify-end"><button class="btn-ghost" (click)="managing.set(null)" data-testid="mb-close">Done</button></div>
+    </div>
+  </div>
+}

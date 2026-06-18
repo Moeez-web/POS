@@ -1,0 +1,71 @@
+<div class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-6" (click)="close()">
+  <div class="card mt-10 w-full max-w-xl p-5" (click)="$event.stopPropagation()">
+    @if (!selected()) {
+      <!-- Search list -->
+      <div class="mb-3 flex items-center justify-between">
+        <h3 class="text-lg font-semibold">Find invoice / Refund</h3>
+        <button class="text-slate-400 hover:text-slate-600" (click)="close()">✕</button>
+      </div>
+      <input class="input" placeholder="Type an invoice number (e.g. INV-000123)" [(ngModel)]="q" (input)="search()" data-testid="finder-search" autofocus />
+      <div class="mt-3 max-h-80 overflow-y-auto">
+        <table class="table">
+          <thead><tr><th>Invoice</th><th>Date</th><th>Status</th><th class="text-right">Total</th><th></th></tr></thead>
+          <tbody>
+            @for (s of results(); track s.id) {
+              <tr class="cursor-pointer hover:bg-slate-50" (click)="rowClick(s)" data-testid="finder-row">
+                <td class="font-mono text-xs">{{ s.invoice_no }}</td>
+                <td class="text-xs text-slate-500">{{ s.created_at | date:'short' }}</td>
+                <td class="text-xs">
+                  @if (s.status === 'held') { <span class="text-amber-600">Held</span> }
+                  @else if (s.status === 'returned') { <span class="text-slate-500">Returned</span> }
+                  @else { <span class="text-green-600">Completed</span> }
+                </td>
+                <td class="text-right">{{ s.total_minor | money }}</td>
+                <td class="text-right">
+                  <div class="flex justify-end gap-1">
+                    @if (s.status === 'held') {
+                      <button class="rounded px-2 py-0.5 text-xs text-brand-600 hover:bg-brand-50" (click)="resumeSale(s, $event)" data-testid="finder-resume">Resume</button>
+                    } @else {
+                      <button class="rounded p-1 hover:bg-slate-100" (click)="open(s); $event.stopPropagation()" title="View invoice on screen" data-testid="finder-view">👁</button>
+                      <button class="rounded p-1 hover:bg-slate-100" (click)="printRow(s, $event)" title="Print receipt" data-testid="finder-print">🖨</button>
+                    }
+                    <button *appHasPermission="'sales.delete'" class="rounded p-1 hover:bg-red-50" (click)="deleteSale(s, $event)" title="Delete invoice" data-testid="finder-delete">🗑</button>
+                  </div>
+                </td>
+              </tr>
+            }
+            @if (results().length === 0) { <tr><td colspan="5" class="py-6 text-center text-slate-400">No matching invoices</td></tr> }
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-3 text-xs text-slate-400">Press <b>F2</b> to open this anytime. <b>Held</b> sales resume to the POS · <b>Completed</b> can be refunded · 🗑 removes an invoice.</p>
+    } @else {
+      <!-- Return for the selected invoice -->
+      <div class="mb-3 flex items-center justify-between">
+        <h3 class="text-lg font-semibold">Refund — {{ selected()!.invoice_no }}</h3>
+        <button class="text-xs text-brand-600 hover:underline" (click)="back()">← Back</button>
+      </div>
+      <table class="table">
+        <thead><tr><th>Item</th><th class="text-right">Sold</th><th class="text-right">Returnable</th><th class="text-right">Return</th></tr></thead>
+        <tbody>
+          @for (it of selected()!.items; track it.id) {
+            <tr>
+              <td>{{ it.product_name }}</td>
+              <td class="text-right">{{ it.qty }}</td>
+              <td class="text-right">{{ maxReturn(it) }}</td>
+              <td class="text-right">
+                <input class="input w-20 text-right" type="number" min="0" [max]="maxReturn(it)" [disabled]="maxReturn(it) === 0"
+                       [ngModel]="returnQty[it.id]" (ngModelChange)="clampReturn(it, $event)" [attr.data-testid]="'finder-return-' + it.id" />
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <div class="mt-3"><label class="label">Reason (optional)</label><input class="input" [(ngModel)]="returnReason" placeholder="e.g. damaged" /></div>
+      <div class="mt-5 flex items-center justify-between gap-2">
+        <button class="btn-ghost" (click)="printCurrent()" data-testid="finder-print-detail">🖨 Print receipt</button>
+        <button *appHasPermission="'returns.create'" class="btn-danger" (click)="submitReturn()" data-testid="finder-submit-return">Process refund</button>
+      </div>
+    }
+  </div>
+</div>

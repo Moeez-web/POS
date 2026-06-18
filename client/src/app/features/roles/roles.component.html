@@ -1,0 +1,53 @@
+<div class="space-y-4">
+  <h1 class="text-2xl font-semibold">Roles &amp; Permissions</h1>
+
+  <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+    <!-- Roles list -->
+    <div class="card p-4">
+      <h2 class="mb-3 font-semibold">Roles</h2>
+      <div class="space-y-1">
+        @for (r of roles(); track r.id) {
+          <button class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100"
+                  [class.bg-brand-50]="selected()?.id === r.id" (click)="select(r)" data-testid="role-item">
+            <span>{{ r.name }}</span>
+            @if (r.is_system) { <span class="text-xs text-slate-400">system</span> }
+          </button>
+        }
+      </div>
+      <div *appHasPermission="'roles.create'" class="mt-4 border-t border-slate-200 pt-3">
+        <label class="label">New role</label>
+        <div class="flex gap-2">
+          <input class="input" placeholder="e.g. Stock Clerk" [ngModel]="newRoleName()" (ngModelChange)="newRoleName.set($event)" data-testid="new-role-name" />
+          <button class="btn-primary" (click)="createRole()" data-testid="create-role">Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Permission matrix -->
+    <div class="card p-4 lg:col-span-2">
+      @if (selected(); as role) {
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="font-semibold">Permissions — {{ role.name }}</h2>
+          <button *appHasPermission="'roles.update'" class="btn-primary" (click)="saveGrants()" data-testid="save-grants">Save changes</button>
+        </div>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          @for (group of grouped(); track group.module) {
+            <div class="rounded-lg border border-slate-200 p-3">
+              <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{{ group.module }}</div>
+              <div class="space-y-1">
+                @for (p of group.perms; track p.id) {
+                  <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" [checked]="granted().has(p.key)" (change)="toggle(p.key)" [attr.data-testid]="'perm-' + p.key" />
+                    <span>{{ p.action }}</span>
+                  </label>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      } @else {
+        <p class="py-10 text-center text-slate-400">Select a role to view and edit its permissions</p>
+      }
+    </div>
+  </div>
+</div>

@@ -1,0 +1,116 @@
+<div class="space-y-6">
+  <h1 class="text-2xl font-semibold">Reports</h1>
+
+  <!-- Date range filter -->
+  <div class="card flex flex-wrap items-end gap-3 p-4">
+    <div>
+      <label class="label">From</label>
+      <input class="input" type="date" [(ngModel)]="from" (change)="load()" data-testid="rep-from" />
+    </div>
+    <div>
+      <label class="label">To</label>
+      <input class="input" type="date" [(ngModel)]="to" (change)="load()" data-testid="rep-to" />
+    </div>
+    <div class="flex gap-2">
+      <button class="btn-ghost" (click)="setRange(1)">Today</button>
+      <button class="btn-ghost" (click)="setRange(7)">7 days</button>
+      <button class="btn-ghost" (click)="setRange(30)">30 days</button>
+      <button class="btn-ghost" (click)="thisMonth()">This month</button>
+    </div>
+  </div>
+
+  <!-- KPI cards -->
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="card p-5" *appHasPermission="'reports.profit.view'">
+      <div class="text-sm text-slate-500">Revenue</div>
+      <div class="mt-1 text-2xl font-semibold">{{ profit()?.revenue_minor | money }}</div>
+      <div class="text-xs text-slate-400">{{ profit()?.sales_count || 0 }} sales</div>
+    </div>
+
+    <div class="card p-5" *appHasPermission="'reports.profit.view'">
+      <div class="text-sm text-slate-500">Gross profit</div>
+      <div class="mt-1 text-2xl font-semibold"
+           [class.text-green-600]="(profit()?.gross_profit_minor || 0) >= 0"
+           [class.text-red-600]="(profit()?.gross_profit_minor || 0) < 0">
+        {{ profit()?.gross_profit_minor | money }}
+      </div>
+      <div class="text-xs text-slate-400">Cost {{ profit()?.cost_minor | money }}</div>
+    </div>
+
+    <div class="card p-5" *appHasPermission="'reports.profit.view'">
+      <div class="text-sm text-slate-500">Net profit</div>
+      <div class="mt-1 text-2xl font-semibold"
+           [class.text-green-600]="(profit()?.net_profit_minor || 0) >= 0"
+           [class.text-red-600]="(profit()?.net_profit_minor || 0) < 0"
+           data-testid="rep-net">
+        {{ profit()?.net_profit_minor | money }}
+        @if ((profit()?.net_profit_minor || 0) < 0) { <span class="text-sm">(loss)</span> }
+      </div>
+      <div class="text-xs text-slate-400">Expenses {{ profit()?.expenses_minor | money }}</div>
+    </div>
+
+    <div class="card p-5" *appHasPermission="'reports.inventory_valuation.view'">
+      <div class="text-sm text-slate-500">Stock value (at cost)</div>
+      <div class="mt-1 text-2xl font-semibold">{{ valuation()?.valuation_minor | money }}</div>
+      <div class="text-xs text-slate-400">{{ valuation()?.units || 0 }} units</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <!-- Top 10 selling products -->
+    <div class="card p-5" *appHasPermission="'reports.sales.view'">
+      <h2 class="mb-3 font-semibold">Top 10 selling products</h2>
+      <table class="table">
+        <thead><tr><th>#</th><th>Product</th><th class="text-right">Qty</th><th class="text-right">Sales</th></tr></thead>
+        <tbody>
+          @for (r of top(products()); track r.label; let i = $index) {
+            <tr><td class="text-slate-400">{{ i + 1 }}</td><td>{{ r.label }}</td><td class="text-right">{{ r.qty }}</td><td class="text-right">{{ r.total_minor | money }}</td></tr>
+          }
+          @if (products().length === 0) { <tr><td colspan="4" class="py-4 text-center text-slate-400">No sales in this range</td></tr> }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Sales by category -->
+    <div class="card p-5" *appHasPermission="'reports.sales.view'">
+      <h2 class="mb-3 font-semibold">Sales by category</h2>
+      <table class="table">
+        <thead><tr><th>Category</th><th class="text-right">Qty</th><th class="text-right">Sales</th></tr></thead>
+        <tbody>
+          @for (r of categories(); track r.label) {
+            <tr><td>{{ r.label }}</td><td class="text-right">{{ r.qty }}</td><td class="text-right">{{ r.total_minor | money }}</td></tr>
+          }
+          @if (categories().length === 0) { <tr><td colspan="3" class="py-4 text-center text-slate-400">—</td></tr> }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Sales by cashier -->
+    <div class="card p-5" *appHasPermission="'reports.sales.view'">
+      <h2 class="mb-3 font-semibold">Sales by cashier</h2>
+      <table class="table">
+        <thead><tr><th>Cashier</th><th class="text-right">Sales</th><th class="text-right">Total</th></tr></thead>
+        <tbody>
+          @for (r of cashiers(); track r.label) {
+            <tr><td>{{ r.label }}</td><td class="text-right">{{ r.sales_count }}</td><td class="text-right">{{ r.total_minor | money }}</td></tr>
+          }
+          @if (cashiers().length === 0) { <tr><td colspan="3" class="py-4 text-center text-slate-400">—</td></tr> }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Expenses by category -->
+    <div class="card p-5" *appHasPermission="'reports.expenses.view'">
+      <h2 class="mb-3 font-semibold">Expenses by category</h2>
+      <table class="table">
+        <thead><tr><th>Category</th><th class="text-right">Amount</th></tr></thead>
+        <tbody>
+          @for (r of expenses(); track r.label) {
+            <tr><td>{{ r.label }}</td><td class="text-right text-red-600">{{ r.total_minor | money }}</td></tr>
+          }
+          @if (expenses().length === 0) { <tr><td colspan="2" class="py-4 text-center text-slate-400">No expenses in this range</td></tr> }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

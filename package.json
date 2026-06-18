@@ -1,0 +1,57 @@
+{
+  "name": "pos",
+  "version": "1.0.0",
+  "description": "POS desktop application (Electron + Angular + Express + SQLite)",
+  "main": "electron/main.js",
+  "author": "",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm --prefix server install && npm --prefix client install",
+    "build:server": "npm --prefix server run build",
+    "build:client": "npm --prefix client run build",
+    "build": "npm run build:server && npm run build:client",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client start -- --port 4200",
+    "dev:electron": "wait-on http://localhost:4200 http://localhost:4317/api/health && cross-env POS_DEV_URL=http://localhost:4200 electron .",
+    "dev": "concurrently -k -n SERVER,CLIENT,ELECTRON -c blue,green,magenta \"npm:dev:server\" \"npm:dev:client\" \"npm:dev:electron\"",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder",
+    "test": "npm --prefix server test",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.pos.desktop",
+    "productName": "POS",
+    "files": [
+      "electron/**/*",
+      "server/dist/**/*",
+      "server/node_modules/**/*",
+      "server/package.json",
+      "client/dist/client/browser/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg" },
+    "linux": { "target": "AppImage" },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://YOUR-UPDATE-FEED-URL/"
+      }
+    ]
+  }
+}

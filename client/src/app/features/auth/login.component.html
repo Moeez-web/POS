@@ -1,0 +1,30 @@
+<div class="flex min-h-screen items-center justify-center p-4">
+  <div class="card w-full max-w-sm p-8">
+    <div class="mb-6 text-center">
+      <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-xl font-bold text-white">P</div>
+      <h1 class="text-xl font-semibold">POS Sign in</h1>
+      <p class="text-sm text-slate-500">Enter your credentials to continue</p>
+    </div>
+
+    <form (ngSubmit)="submit()" class="space-y-4">
+      <div>
+        <label class="label">Username</label>
+        <input class="input" name="username" [(ngModel)]="username" data-testid="login-username" autocomplete="username" autofocus />
+      </div>
+      <div>
+        <label class="label">Password</label>
+        <input class="input" name="password" type="password" [(ngModel)]="password" data-testid="login-password" autocomplete="current-password" />
+      </div>
+
+      @if (error()) {
+        <p class="text-sm text-red-600" data-testid="login-error">{{ error() }}</p>
+      }
+
+      <button class="btn-primary w-full" type="submit" [disabled]="loading()" data-testid="login-submit">
+        {{ loading() ? 'Signing in…' : 'Sign in' }}
+      </button>
+    </form>
+
+    <p class="mt-4 text-center text-xs text-slate-400">Default: admin / admin123</p>
+  </div>
+</div>

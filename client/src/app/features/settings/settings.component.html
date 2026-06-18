@@ -1,0 +1,155 @@
+<div class="space-y-4">
+  <h1 class="text-2xl font-semibold">Settings</h1>
+
+  <!-- Tabs -->
+  <div class="flex gap-1 border-b border-slate-200">
+    <button class="px-4 py-2 text-sm font-medium" [class.border-b-2]="tab() === 'general'" [class.border-brand-600]="tab() === 'general'" [class.text-brand-700]="tab() === 'general'" [class.text-slate-500]="tab() !== 'general'" (click)="tab.set('general')" data-testid="tab-general">General</button>
+    <button class="px-4 py-2 text-sm font-medium" [class.border-b-2]="tab() === 'categories'" [class.border-brand-600]="tab() === 'categories'" [class.text-brand-700]="tab() === 'categories'" [class.text-slate-500]="tab() !== 'categories'" (click)="tab.set('categories')" data-testid="tab-categories">Categories</button>
+    <button class="px-4 py-2 text-sm font-medium" [class.border-b-2]="tab() === 'units'" [class.border-brand-600]="tab() === 'units'" [class.text-brand-700]="tab() === 'units'" [class.text-slate-500]="tab() !== 'units'" (click)="tab.set('units')" data-testid="tab-units">Units</button>
+  </div>
+
+  <!-- General: 3 cards in one row — preview · Shop & Receipt · General -->
+  @if (tab() === 'general') {
+    <div class="space-y-4">
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
+      <!-- Preview: col-3 -->
+      <div class="lg:col-span-3">
+        <p class="mb-2 text-sm font-medium text-slate-500">Live preview — how the receipt will print</p>
+        <div class="flex justify-center rounded-xl bg-slate-200 p-6">
+          <div class="bg-white p-3 font-mono text-[11px] leading-tight text-black shadow-md"
+               [style.width.px]="s.receipt_paper_width === '58' ? 190 : 270">
+            <div class="text-center">
+              <div class="text-[14px] font-bold">{{ s.shop_name || 'My Store' }}</div>
+              @if (s.shop_address) { <div>{{ s.shop_address }}</div> }
+              @if (s.shop_phone) { <div>Tel: {{ s.shop_phone }}</div> }
+              @if (s.receipt_header) { <div class="mt-1">{{ s.receipt_header }}</div> }
+            </div>
+            <div class="my-1 border-t border-dashed border-black"></div>
+            <div>Invoice: <b>{{ sample.invoice_no }}</b></div>
+            <div>Date: {{ now }}</div>
+            <div class="my-1 border-t border-dashed border-black"></div>
+            <table class="w-full">
+              <tr><td class="font-bold">Item</td><td class="text-center font-bold">Qty</td><td class="text-right font-bold">Price</td><td class="text-right font-bold">Amt</td></tr>
+              @for (it of sample.items; track it.name) {
+                <tr><td>{{ it.name }}</td><td class="text-center">{{ it.qty }}</td><td class="text-right">{{ it.price.toFixed(2) }}</td><td class="text-right">{{ it.amount.toFixed(2) }}</td></tr>
+              }
+            </table>
+            <div class="my-1 border-t border-dashed border-black"></div>
+            <div class="flex justify-between"><span>Subtotal</span><span>{{ sample.subtotal.toFixed(2) }}</span></div>
+            <div class="flex justify-between"><span>Tax</span><span>{{ sample.tax.toFixed(2) }}</span></div>
+            <div class="flex justify-between text-[13px] font-bold"><span>TOTAL</span><span>{{ s.currency }} {{ sample.total.toFixed(2) }}</span></div>
+            <div class="flex justify-between"><span>Cash</span><span>{{ sample.cash.toFixed(2) }}</span></div>
+            <div class="flex justify-between"><span>Change</span><span>{{ sample.change.toFixed(2) }}</span></div>
+            <div class="my-1 border-t border-dashed border-black"></div>
+            <div class="text-center">{{ s.receipt_footer || 'Thank you for shopping!' }}</div>
+            <div class="mt-2 text-center text-[9px]">— — — — — — —<br>This product is built by <b>Moeez Haider</b>.<br>For inquiry contact moeezhaider12&#64;gmail.com</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings: col-9 (cards fill the full width) -->
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-3 lg:col-span-9">
+      <!-- Card 2: Shop -->
+      <div class="card space-y-3 p-6">
+        <h3 class="font-semibold">Shop</h3>
+        <div><label class="label">Shop name</label><input class="input" [(ngModel)]="s.shop_name" data-testid="rc-shop" /></div>
+        <div><label class="label">Phone</label><input class="input" [(ngModel)]="s.shop_phone" data-testid="rc-phone" /></div>
+        <div><label class="label">Address</label><input class="input" [(ngModel)]="s.shop_address" data-testid="rc-address" /></div>
+      </div>
+
+      <!-- Card 3: Receipt -->
+      <div class="card space-y-3 p-6">
+        <h3 class="font-semibold">Receipt</h3>
+        <div><label class="label">Header line (optional)</label><input class="input" [(ngModel)]="s.receipt_header" placeholder="e.g. Cash Memo" /></div>
+        <div><label class="label">Footer message</label><input class="input" [(ngModel)]="s.receipt_footer" data-testid="rc-footer" /></div>
+        <div>
+          <label class="label">Paper width</label>
+          <select class="input" [(ngModel)]="s.receipt_paper_width" data-testid="rc-width">
+            <option value="58">58 mm (small thermal)</option>
+            <option value="80">80 mm (standard thermal)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Card 4: General -->
+      <div class="card space-y-3 p-6">
+        <h3 class="font-semibold">General</h3>
+        <div><label class="label">Currency</label><input class="input" [(ngModel)]="s.currency" /></div>
+        <div><label class="label">Idle logout (minutes)</label><input class="input" type="number" [(ngModel)]="s.idle_logout_minutes" /></div>
+        <div>
+          <label class="label">Batch selection strategy</label>
+          <select class="input" [(ngModel)]="s.batch_selection_strategy" data-testid="set-strategy">
+            <option value="fifo">FIFO (oldest first)</option>
+            <option value="cashier">Cashier picks batch</option>
+            <option value="latest">Latest price</option>
+          </select>
+          <p class="mt-1 text-xs text-slate-400">How checkout picks which batch (and price) to sell when a product has several.</p>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <div *appHasPermission="'settings.update'" class="flex justify-end">
+      <button class="btn-primary" (click)="saveGeneral()" data-testid="set-save">Save settings</button>
+    </div>
+    </div>
+  }
+
+  <!-- Categories: product & expense side-by-side -->
+  @if (tab() === 'categories') {
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <!-- Product categories -->
+      <div class="card p-6">
+        <h3 class="font-semibold">Product Categories</h3>
+        <p class="mb-3 mt-1 text-sm text-slate-500">Groups for your products (e.g. Beverages, Snacks).</p>
+        <div class="mb-4 flex gap-2" *appHasPermission="'categories.create'">
+          <input class="input" placeholder="New category" [(ngModel)]="newCategory" (keyup.enter)="addCategory()" data-testid="cat-name" />
+          <button class="btn-primary" (click)="addCategory()" data-testid="cat-add">Add</button>
+        </div>
+        <ul class="divide-y divide-slate-100">
+          @for (c of categories(); track c.id) {
+            <li class="flex items-center justify-between py-2 text-sm"><span>{{ c.name }}</span>
+              <button *appHasPermission="'categories.delete'" class="icon-btn hover:text-red-600" (click)="deleteCategory(c.id)" title="Delete">✕</button></li>
+          }
+          @if (categories().length === 0) { <li class="py-4 text-center text-slate-400">No categories yet</li> }
+        </ul>
+      </div>
+
+      <!-- Expense categories -->
+      <div class="card p-6">
+        <h3 class="font-semibold">Expense Categories</h3>
+        <p class="mb-3 mt-1 text-sm text-slate-500">Groups for expenses (e.g. Rent, Utilities, Salaries).</p>
+        <div class="mb-4 flex gap-2" *appHasPermission="'expense_categories.manage'">
+          <input class="input" placeholder="New expense category" [(ngModel)]="newExpenseCat" (keyup.enter)="addExpenseCat()" data-testid="ecat-name" />
+          <button class="btn-primary" (click)="addExpenseCat()" data-testid="ecat-add">Add</button>
+        </div>
+        <ul class="divide-y divide-slate-100">
+          @for (c of expenseCats(); track c.id) {
+            <li class="flex items-center justify-between py-2 text-sm"><span>{{ c.name }}</span>
+              <button *appHasPermission="'expense_categories.manage'" class="icon-btn hover:text-red-600" (click)="deleteExpenseCat(c.id)" title="Delete">✕</button></li>
+          }
+          @if (expenseCats().length === 0) { <li class="py-4 text-center text-slate-400">No expense categories yet</li> }
+        </ul>
+      </div>
+    </div>
+  }
+
+  <!-- Units -->
+  @if (tab() === 'units') {
+    <div class="card p-6">
+      <p class="mb-3 text-sm text-slate-500">How products are measured (e.g. Piece/pcs, Kilogram/kg, Box/box).</p>
+      <div class="mb-4 flex gap-2" *appHasPermission="'units.create'">
+        <input class="input flex-1" placeholder="Unit name (e.g. Kilogram)" [(ngModel)]="newUnit.name" data-testid="unit-name" />
+        <input class="input max-w-[140px]" placeholder="Short (kg)" [(ngModel)]="newUnit.short_name" data-testid="unit-short" />
+        <button class="btn-primary" (click)="addUnit()" data-testid="unit-add">Add</button>
+      </div>
+      <ul class="divide-y divide-slate-100">
+        @for (u of units(); track u.id) {
+          <li class="flex items-center justify-between py-2 text-sm"><span>{{ u.name }} <span class="text-slate-400">({{ u.short_name }})</span></span>
+            <button *appHasPermission="'units.delete'" class="icon-btn hover:text-red-600" (click)="deleteUnit(u.id)" title="Delete">✕</button></li>
+        }
+        @if (units().length === 0) { <li class="py-4 text-center text-slate-400">No units yet</li> }
+      </ul>
+    </div>
+  }
+</div>

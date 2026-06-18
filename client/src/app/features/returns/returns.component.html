@@ -1,0 +1,52 @@
+<div class="space-y-4">
+  <h1 class="text-2xl font-semibold">Returns &amp; Refunds</h1>
+
+  <div class="flex gap-2">
+    <input class="input max-w-xs" placeholder="🔍 Search by invoice no." [(ngModel)]="q" (keyup.enter)="search()" data-testid="returns-search" />
+    <button class="btn-ghost" (click)="search()">Search</button>
+  </div>
+
+  <div class="card overflow-hidden">
+    <table class="table">
+      <thead><tr><th>Date</th><th>Invoice</th><th>Reason</th><th>Processed by</th><th class="text-right">Refund</th></tr></thead>
+      <tbody>
+        @for (r of page()?.data ?? []; track r.id) {
+          <tr class="cursor-pointer hover:bg-slate-50" (click)="open(r)" data-testid="return-row">
+            <td class="text-xs text-slate-500">{{ r.created_at | date:'short' }}</td>
+            <td class="font-mono text-xs">{{ r.invoice_no }}</td>
+            <td>{{ r.reason || '—' }}</td>
+            <td class="text-xs text-slate-500">{{ r.processed_by || '—' }}</td>
+            <td class="text-right font-medium text-red-600">{{ r.total_minor | money }}</td>
+          </tr>
+        }
+        @if ((page()?.data?.length ?? 0) === 0) { <tr><td colspan="5" class="py-8 text-center text-slate-400">No returns yet.</td></tr> }
+      </tbody>
+    </table>
+  </div>
+  <app-paginator [total]="page()?.total || 0" [page]="pageNum" [pageSize]="20" (pageChange)="goPage($event)" />
+</div>
+
+<!-- Return detail -->
+@if (selected(); as r) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-md p-6">
+      <div class="mb-3 flex items-center justify-between">
+        <h3 class="text-lg font-semibold">Refund — {{ r.invoice_no }}</h3>
+        <button class="text-slate-400 hover:text-slate-600" (click)="selected.set(null)">✕</button>
+      </div>
+      <p class="mb-3 text-xs text-slate-500">{{ r.created_at | date:'medium' }} · by {{ r.processed_by || '—' }} @if (r.reason) { · {{ r.reason }} }</p>
+      <table class="table">
+        <thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Refund</th></tr></thead>
+        <tbody>
+          @for (it of r.items; track it.id) {
+            <tr><td>{{ it.product_name }}</td><td class="text-right">{{ it.qty }}</td><td class="text-right">{{ it.amount_minor | money }}</td></tr>
+          }
+        </tbody>
+      </table>
+      <div class="mt-3 flex justify-between border-t border-slate-200 pt-3 text-lg font-semibold">
+        <span>Total refund</span><span class="text-red-600">{{ r.total_minor | money }}</span>
+      </div>
+      <div class="mt-5 flex justify-end"><button class="btn-ghost" (click)="selected.set(null)">Close</button></div>
+    </div>
+  </div>
+}

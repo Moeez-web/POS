@@ -1,0 +1,46 @@
+name: Build Windows Installer
+
+# Builds the POS Windows .exe installer on a Windows runner.
+# Trigger it two ways:
+#   1. Manually from the GitHub "Actions" tab (Run workflow), or
+#   2. Automatically by pushing a version tag like v1.0.0
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Root `npm install` runs the postinstall script, which installs
+      # both server/ and client/ dependencies.
+      - name: Install dependencies
+        run: npm install
+
+      # Compiles the server (tsc) and builds the Angular client (prod).
+      - name: Build server + client
+        run: npm run build
+
+      # Packages the Electron app into an NSIS .exe installer.
+      # --publish never avoids touching the (placeholder) auto-update feed.
+      - name: Package Windows installer
+        run: npx electron-builder --win --publish never
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: POS-Windows-Installer
+          path: release/*.exe
+          if-no-files-found: error

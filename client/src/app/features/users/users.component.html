@@ -1,0 +1,87 @@
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold">Users</h1>
+    <button *appHasPermission="'users.create'" class="btn-primary" (click)="creating.set(true)" data-testid="new-user">+ New user</button>
+  </div>
+
+  <div class="card overflow-hidden">
+    <table class="table">
+      <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
+      <tbody>
+        @for (u of page()?.data ?? []; track u.id) {
+          <tr data-testid="user-row">
+            <td class="font-medium">{{ u.username }}</td>
+            <td>{{ u.full_name || '—' }}</td>
+            <td><span class="rounded bg-slate-100 px-2 py-0.5 text-xs">{{ u.role_name }}</span></td>
+            <td>
+              @if (u.is_active) { <span class="text-green-600 text-xs">Active</span> }
+              @else { <span class="text-slate-400 text-xs">Inactive</span> }
+            </td>
+            <td class="text-right">
+              <div class="flex justify-end gap-1" *appHasPermission="'users.update'">
+                <button class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-brand-600" (click)="openReset(u)"
+                        title="Reset password" data-testid="reset-pw">
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a4 4 0 11-8 0 4 4 0 018 0zM21 21l-3-3m0 0a3 3 0 10-4-4" />
+                  </svg>
+                </button>
+                <button class="rounded-lg p-2 hover:bg-slate-100" [class.text-green-600]="!u.is_active" [class.text-amber-600]="u.is_active"
+                        (click)="toggleActive(u)" [title]="u.is_active ? 'Deactivate user' : 'Activate user'" data-testid="toggle-active">
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    @if (u.is_active) {
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+                    } @else {
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    }
+                  </svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        }
+        @if ((page()?.data?.length ?? 0) === 0) { <tr><td colspan="5" class="py-8 text-center text-slate-400">No users</td></tr> }
+      </tbody>
+    </table>
+  </div>
+  <app-paginator [total]="page()?.total || 0" [page]="pageNum" [pageSize]="20" (pageChange)="goPage($event)" />
+</div>
+
+@if (creating()) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-md p-6">
+      <h3 class="mb-4 text-lg font-semibold">New user</h3>
+      <div class="space-y-3">
+        <div><label class="label">Username</label><input class="input" [(ngModel)]="form.username" data-testid="nu-username" /></div>
+        <div><label class="label">Full name</label><input class="input" [(ngModel)]="form.full_name" /></div>
+        <div>
+          <label class="label">Role</label>
+          <select class="input" [(ngModel)]="form.role_id" data-testid="nu-role">
+            @for (r of roles(); track r.id) { <option [value]="r.id">{{ r.name }}</option> }
+          </select>
+        </div>
+        <div><label class="label">Temporary password</label><input class="input" type="text" [(ngModel)]="form.password" data-testid="nu-password" /></div>
+        <p class="text-xs text-slate-400">The user will be asked to change this on first login.</p>
+      </div>
+      <div class="mt-5 grid grid-cols-2 gap-2">
+        <button class="btn-ghost" (click)="creating.set(false)">Cancel</button>
+        <button class="btn-primary" (click)="save()" data-testid="nu-save">Create user</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Reset password dialog (replaces window.prompt, which Electron blocks) -->
+@if (resetting(); as u) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-sm p-6">
+      <h3 class="mb-1 text-lg font-semibold">Reset password</h3>
+      <p class="mb-4 text-sm text-slate-500">Set a new password for <b>{{ u.username }}</b>. They'll be asked to change it on next login.</p>
+      <label class="label">New password</label>
+      <input class="input" type="text" [(ngModel)]="newPassword" placeholder="At least 6 characters" data-testid="reset-pw-input" autofocus />
+      <div class="mt-5 grid grid-cols-2 gap-2">
+        <button class="btn-ghost" (click)="resetting.set(null)">Cancel</button>
+        <button class="btn-primary" (click)="confirmReset()" data-testid="reset-pw-confirm">Reset password</button>
+      </div>
+    </div>
+  </div>
+}

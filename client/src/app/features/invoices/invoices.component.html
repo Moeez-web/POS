@@ -1,0 +1,106 @@
+<div class="space-y-4">
+  <h1 class="text-2xl font-semibold">Invoices</h1>
+
+  <div class="card overflow-hidden">
+    <table class="table">
+      <thead><tr><th>Invoice</th><th>Date</th><th>Status</th><th class="text-right">Total</th><th></th></tr></thead>
+      <tbody>
+        @for (s of page()?.data ?? []; track s.id) {
+          <tr class="cursor-pointer hover:bg-slate-50" (click)="open(s)" data-testid="invoice-row">
+            <td class="font-mono text-xs">{{ s.invoice_no }}</td>
+            <td class="text-xs text-slate-500">{{ s.created_at | date:'short' }}</td>
+            <td>
+              @if (s.status === 'completed') { <span class="text-green-600 text-xs">Completed</span> }
+              @else if (s.status === 'returned') { <span class="text-amber-600 text-xs">Returned</span> }
+              @else { <span class="text-slate-400 text-xs">{{ s.status }}</span> }
+            </td>
+            <td class="text-right font-medium">{{ s.total_minor | money }}</td>
+            <td class="text-right text-xs text-brand-600">View →</td>
+          </tr>
+        }
+        @if ((page()?.data?.length ?? 0) === 0) { <tr><td colspan="5" class="py-8 text-center text-slate-400">No invoices yet — make a sale in the POS.</td></tr> }
+      </tbody>
+    </table>
+  </div>
+  <app-paginator [total]="page()?.total || 0" [page]="pageNum" [pageSize]="20" (pageChange)="goPage($event)" />
+</div>
+
+<!-- Invoice detail -->
+@if (selected(); as sale) {
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+    <div class="card w-full max-w-lg p-6">
+      <div class="mb-3 flex items-center justify-between">
+        <div>
+          <h3 class="text-lg font-semibold">{{ sale.invoice_no }}</h3>
+          <p class="text-xs text-slate-500">{{ sale.created_at | date:'medium' }}</p>
+        </div>
+        <span class="rounded px-2 py-1 text-xs" [class.bg-green-100]="sale.status === 'completed'" [class.text-green-700]="sale.status === 'completed'"
+              [class.bg-amber-100]="sale.status === 'returned'" [class.text-amber-700]="sale.status === 'returned'">{{ sale.status }}</span>
+      </div>
+
+      <table class="table">
+        <thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Price</th><th class="text-right">Total</th></tr></thead>
+        <tbody>
+          @for (it of sale.items; track it.id) {
+            <tr>
+              <td>{{ it.product_name }} @if (it.returned_qty > 0) { <span class="text-xs text-amber-600">({{ it.returned_qty }} returned)</span> }</td>
+              <td class="text-right">{{ it.qty }}</td>
+              <td class="text-right">{{ it.unit_price_minor | money }}</td>
+              <td class="text-right">{{ it.line_total_minor | money }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <div class="mt-3 space-y-1 border-t border-slate-200 pt-3 text-sm">
+        <div class="flex justify-between text-slate-500"><span>Subtotal</span><span>{{ sale.subtotal_minor | money }}</span></div>
+        @if (sale.discount_minor > 0) { <div class="flex justify-between text-slate-500"><span>Discount</span><span>− {{ sale.discount_minor | money }}</span></div> }
+        <div class="flex justify-between text-slate-500"><span>Tax</span><span>{{ sale.tax_minor | money }}</span></div>
+        <div class="flex justify-between font-semibold"><span>Total</span><span>{{ sale.total_minor | money }}</span></div>
+        @if (sale.refunded_minor > 0) {
+          <div class="flex justify-between text-red-600"><span>Refunded</span><span>− {{ sale.refunded_minor | money }}</span></div>
+          <div class="flex justify-between text-lg font-semibold"><span>Net</span><span>{{ sale.net_total_minor | money }}</span></div>
+        }
+      </div>
+
+      <div class="mt-5 flex justify-between">
+        <button *appHasPermission="'returns.create'" class="btn-danger" (click)="openReturn()" data-testid="open-return">↩ Return / Refund</button>
+        <button class="btn-ghost" (click)="selected.set(null)" data-testid="close-invoice">Close</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Return / refund -->
+@if (returning() && selected(); as sale) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="card w-full max-w-lg p-6">
+      <h3 class="mb-1 text-lg font-semibold">Return / Refund — {{ sale.invoice_no }}</h3>
+      <p class="mb-4 text-xs text-slate-500">Enter how many of each item to return. Stock is restored automatically.</p>
+
+      <table class="table">
+        <thead><tr><th>Item</th><th class="text-right">Sold</th><th class="text-right">Returnable</th><th class="text-right">Return qty</th></tr></thead>
+        <tbody>
+          @for (it of sale.items; track it.id) {
+            <tr>
+              <td>{{ it.product_name }}</td>
+              <td class="text-right">{{ it.qty }}</td>
+              <td class="text-right">{{ maxReturn(it) }}</td>
+              <td class="text-right">
+                <input class="input w-20 text-right" type="number" min="0" [max]="maxReturn(it)" [disabled]="maxReturn(it) === 0"
+                       [ngModel]="returnQty[it.id]" (ngModelChange)="clampReturn(it, $event)" [attr.data-testid]="'return-qty-' + it.id" />
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <div class="mt-3"><label class="label">Reason (optional)</label><input class="input" [(ngModel)]="returnReason" placeholder="e.g. damaged, wrong item" data-testid="return-reason" /></div>
+
+      <div class="mt-5 grid grid-cols-2 gap-2">
+        <button class="btn-ghost" (click)="returning.set(false)">Cancel</button>
+        <button class="btn-danger" (click)="submitReturn()" data-testid="submit-return">Process refund</button>
+      </div>
+    </div>
+  </div>
+}
