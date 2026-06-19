@@ -24,13 +24,29 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Root `npm install` runs the postinstall script, which installs
-      # both server/ and client/ dependencies.
-      - name: Install dependencies
+      # Install each package directly. We deliberately do NOT run the root
+      # `npm install` postinstall (it chains `npm --prefix server/client install`,
+      # which is unreliable on Windows: nested npm isn't on PATH and --prefix
+      # re-triggers the root postinstall). --ignore-scripts also skips the
+      # electron/playwright binary downloads we don't need for packaging.
+      - name: Install root dependencies
+        run: npm install --ignore-scripts
+
+      - name: Install server dependencies
+        working-directory: server
         run: npm install
 
-      # Compiles the server (tsc) and builds the Angular client (prod).
-      - name: Build server + client
+      - name: Install client dependencies
+        working-directory: client
+        run: npm install
+
+      # Build each package in its own directory (no nested `npm --prefix`).
+      - name: Build server
+        working-directory: server
+        run: npm run build
+
+      - name: Build client
+        working-directory: client
         run: npm run build
 
       # Packages the Electron app into an NSIS .exe installer.
