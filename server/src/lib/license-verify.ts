@@ -41,13 +41,17 @@ export const ACTIVATE_STATES: LicenseState[] = ['none', 'blocked', 'clock_tamper
 const SKEW_SECONDS = 24 * 3600; // clock-rollback tolerance
 
 /**
- * Offline-first fallback JWKS for ONLINE dashboard tokens. Refreshed from the dashboard on every
- * successful online check; this constant only bootstraps verification before first online contact.
+ * Embedded trusted JWKS — the DASHBOARD's signing public key(s). Used to verify both online
+ * dashboard tokens and OFFLINE manual keys minted by the dashboard. Refreshed from the dashboard
+ * on every successful online check; this constant bootstraps verification before first contact.
+ *
+ * IMPORTANT: these must match the dashboard's current signing keys. If the dashboard is reseeded
+ * or rotates keys, update this from `curl https://<dashboard>/api/device/keys` and rebuild.
+ * (For a stable offline setup, give the dashboard a fixed signing key rather than rotating ones.)
  */
 export const FALLBACK_JWKS: { keys: JWK[] } = {
   keys: [
-    { kty: 'OKP', crv: 'Ed25519', x: 'Gk4nGtNeFgZeeYKEVMUp5WsrtQjRDns6RslarMbV0N0', kid: 'k_e77eab1b', alg: 'EdDSA', use: 'sig' },
-    { kty: 'OKP', crv: 'Ed25519', x: 'xHalgEVFd2m3iT6THXZO_FsjwrbuHITkvar2aR-F5ZY', kid: 'k_7c5e0428', alg: 'EdDSA', use: 'sig' },
+    { kty: 'OKP', crv: 'Ed25519', x: 'hnXRaW1X-2BI3DZL_k1SG2qipCb4OrgpE0SQt1NzE8Y', kid: 'k_1ae1b544', alg: 'EdDSA', use: 'sig' },
   ],
 };
 
@@ -72,12 +76,16 @@ async function selectKey(jwksCache: string | null, kid: string | undefined): Pro
   return jwk ? ((await importJWK(jwk, 'EdDSA')) as KeyLike) : null;
 }
 
-/** Verify a pasted manual key offline (no DB). Throws on any invalid/expired/wrong-install key. */
+/**
+ * Verify a pasted manual key offline (no DB). Accepts keys signed by the embedded issuer key
+ * (kid 'manual-1', via the sign-license-key script) OR by the dashboard's embedded signing
+ * key(s) (kid from FALLBACK_JWKS). Throws on any invalid/expired/wrong-install/untrusted key.
+ */
 export async function verifyManualKey(key: string): Promise<Record<string, unknown>> {
   const header = decodeProtectedHeader(key);
-  if (header.kid !== 'manual-1') throw new Error('not a manual key');
-  const pub = await importSPKI(config.issuerPublicKeyPem, 'EdDSA');
-  const { payload } = await jwtVerify(key, pub, { issuer: 'posdash' });
+  const vkey = await selectKey(null, header.kid);
+  if (!vkey) throw new Error('untrusted signing key');
+  const { payload } = await jwtVerify(key, vkey, { issuer: 'posdash' });
   const sub = payload.sub;
   if (sub !== '*' && sub !== config.installId) throw new Error('key not valid for this install');
   return payload as Record<string, unknown>;

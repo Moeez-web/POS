@@ -38,6 +38,9 @@ function startServer() {
   const userData = app.getPath('userData');
   fs.mkdirSync(userData, { recursive: true });
   const entry = path.join(__dirname, '..', 'server', 'dist', 'server.js');
+  // Capture the API server's output to a log file so packaged-build startup failures are diagnosable
+  // (there's no console in a packaged app). See userData/server.log.
+  const logFd = fs.openSync(path.join(userData, 'server.log'), 'a');
   serverProc = spawn(process.execPath, [entry], {
     env: {
       ...process.env,
@@ -49,7 +52,14 @@ function startServer() {
       POS_INSTALL_ID: getInstallId(userData),
       POS_DASHBOARD_URL: process.env.POS_DASHBOARD_URL || 'http://localhost:4400/api/device',
     },
-    stdio: 'inherit',
+    stdio: ['ignore', logFd, logFd],
+  });
+  serverProc.on('error', (e) => {
+    try {
+      fs.appendFileSync(path.join(userData, 'server.log'), `\n[spawn error] ${String(e)}\n`);
+    } catch {
+      /* ignore */
+    }
   });
 }
 

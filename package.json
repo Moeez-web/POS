@@ -1,6 +1,6 @@
 {
   "name": "pos",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "CounterPro — point-of-sale desktop app (Electron + Angular + Express + SQLite)",
   "main": "electron/main.js",
   "author": "",
@@ -33,6 +33,7 @@
   "build": {
     "appId": "com.counterpro.desktop",
     "productName": "CounterPro",
+    "asar": false,
     "files": [
       "electron/**/*",
       "server/dist/**/*",
