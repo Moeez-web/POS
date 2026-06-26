@@ -1,3 +1,18 @@
+export type LicenseState =
+  | 'unactivated'
+  | 'ok'
+  | 'payment_due'
+  | 'payment_blocked'
+  | 'needs_connection'
+  | 'suspended';
+
+export interface LicenseStatus {
+  state: LicenseState;
+  accessUntil: number | null;
+  graceDays: number | null;
+  plan: string | null;
+}
+
 export interface User {
   id: number;
   username: string;

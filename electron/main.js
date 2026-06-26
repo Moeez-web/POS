@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -21,6 +21,18 @@ function getJwtSecret(userData) {
   }
 }
 
+/** Persist a stable per-install id in userData (used for license activation/heartbeat). */
+function getInstallId(userData) {
+  const file = path.join(userData, 'install.id');
+  try {
+    return fs.readFileSync(file, 'utf8').trim();
+  } catch {
+    const id = crypto.randomUUID();
+    fs.writeFileSync(file, id);
+    return id;
+  }
+}
+
 /** Run the compiled API server using Electron's bundled Node (no extra runtime needed). */
 function startServer() {
   const userData = app.getPath('userData');
@@ -34,6 +46,8 @@ function startServer() {
       POS_PORT: String(PORT),
       POS_JWT_SECRET: getJwtSecret(userData),
       POS_APP_VERSION: app.getVersion(),
+      POS_INSTALL_ID: getInstallId(userData),
+      POS_DASHBOARD_URL: process.env.POS_DASHBOARD_URL || 'http://localhost:4400/api/device',
     },
     stdio: 'inherit',
   });
@@ -78,18 +92,40 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, '..', 'client', 'dist', 'client', 'browser', 'index.html'));
   }
+  return win;
 }
 
-/** Optional auto-update — only in a packaged build with a configured feed (docs/09). */
-function initAutoUpdate() {
-  if (!app.isPackaged) return;
+/**
+ * Auto-update (docs/09): download in the background, but NEVER install without explicit consent.
+ * Status is forwarded to the renderer, which shows an in-app banner; the customer chooses.
+ */
+function initAutoUpdate(win) {
+  if (!app.isPackaged) return; // dev: no updater
+  let autoUpdater;
   try {
-    const { autoUpdater } = require('electron-updater');
-    autoUpdater.autoDownload = true;
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    ({ autoUpdater } = require('electron-updater'));
   } catch {
-    /* electron-updater not installed in dev */
+    return; // not installed in dev
   }
+
+  autoUpdater.autoDownload = true; // fetch in background
+  autoUpdater.autoInstallOnAppQuit = false; // NEVER install without explicit consent
+
+  const send = (status, payload = {}) => {
+    if (win && !win.isDestroyed()) win.webContents.send('update:status', { status, ...payload });
+  };
+  autoUpdater.on('checking-for-update', () => send('checking'));
+  autoUpdater.on('update-available', (i) => send('available', { version: i.version }));
+  autoUpdater.on('update-not-available', () => send('none'));
+  autoUpdater.on('download-progress', (p) => send('downloading', { percent: Math.round(p.percent) }));
+  autoUpdater.on('update-downloaded', (i) => send('downloaded', { version: i.version, notes: i.releaseNotes }));
+  autoUpdater.on('error', (e) => send('error', { message: String(e?.message || e) }));
+
+  ipcMain.handle('update:check', () => autoUpdater.checkForUpdates().catch(() => {}));
+  ipcMain.handle('update:install', () => autoUpdater.quitAndInstall()); // customer clicked "Install now"
+
+  autoUpdater.checkForUpdates().catch(() => {}); // on launch
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000); // every 6h
 }
 
 app.whenReady().then(async () => {
@@ -101,8 +137,8 @@ app.whenReady().then(async () => {
   } catch (e) {
     console.error(e);
   }
-  createWindow();
-  initAutoUpdate();
+  const win = createWindow();
+  initAutoUpdate(win);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

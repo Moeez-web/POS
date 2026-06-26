@@ -1,14 +1,10 @@
 name: Build Windows Installer
 
-# Builds the POS Windows .exe installer on a Windows runner.
-# Trigger it two ways:
-#   1. Manually from the GitHub "Actions" tab (Run workflow), or
-#   2. Automatically by pushing a version tag like v1.0.0
+# Builds the POS Windows .exe installer (artifact only, no publish) for ad-hoc/PR builds.
+# Releases are handled by release.yml (on tag push); this stays manual to avoid
+# double-building on a tag.
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build-windows:

@@ -9,6 +9,11 @@ dist/
 /release
 /tmp
 
+# Playwright test output
+e2e/test-results/
+e2e/playwright-report/
+test-results/
+
 # Database files (generated at runtime / dev)
 *.db
 *.db-shm

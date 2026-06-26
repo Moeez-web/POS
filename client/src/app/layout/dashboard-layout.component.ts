@@ -1,18 +1,26 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthStore } from '../core/auth.store';
 import { AuthService } from '../core/auth.service';
+import { LicenseService } from '../core/license.service';
 import { HasPermissionDirective } from '../shared/has-permission.directive';
+import { UpdateBannerComponent } from '../shared/update-banner.component';
 
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, HasPermissionDirective],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, HasPermissionDirective, UpdateBannerComponent],
   templateUrl: './dashboard-layout.component.html',
 })
 export class DashboardLayoutComponent {
   store = inject(AuthStore);
+  license = inject(LicenseService);
+  bannerDismissed = signal(false);
   private auth = inject(AuthService);
+
+  dismissBanner(): void {
+    this.bannerDismissed.set(true);
+  }
 
   // icon = a heroicons-style SVG path (rendered inline; no icon-font dependency, works offline).
   nav = [

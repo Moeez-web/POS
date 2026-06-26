@@ -1,6 +1,6 @@
 {
   "name": "pos",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "POS desktop application (Electron + Angular + Express + SQLite)",
   "main": "electron/main.js",
   "author": "",
@@ -49,8 +49,9 @@
     "linux": { "target": "AppImage" },
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://YOUR-UPDATE-FEED-URL/"
+        "provider": "github",
+        "owner": "Moeez-web",
+        "repo": "POS"
       }
     ]
   }

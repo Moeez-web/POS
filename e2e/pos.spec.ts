@@ -16,6 +16,18 @@ async function seed(api: APIRequestContext) {
     data: { username: 'cashier1', password: 'cashpass', full_name: 'Cashier One', role_id: cashierRole.id },
   });
 
+  // A newly-created user has must_change_password = 1, which forces the change-password
+  // screen on first login. Clear it (keeping the same password) so the cashier specs
+  // land straight on /pos.
+  const cashLogin = await api.post(`${API}/auth/login`, { data: { username: 'cashier1', password: 'cashpass' } });
+  if (cashLogin.ok()) {
+    const cashToken = (await cashLogin.json()).data.token as string;
+    await api.post(`${API}/auth/change-password`, {
+      headers: { Authorization: `Bearer ${cashToken}` },
+      data: { old_password: 'cashpass', new_password: 'cashpass' },
+    });
+  }
+
   // Product + barcode + stock (via a purchase, which creates a batch).
   const code = `BC${Date.now()}`;
   const prod = await (

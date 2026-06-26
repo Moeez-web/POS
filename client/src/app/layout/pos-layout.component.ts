@@ -1,13 +1,15 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { RouterOutlet, RouterLink } from '@angular/router';
 import { AuthStore } from '../core/auth.store';
 import { AuthService } from '../core/auth.service';
+import { LicenseService } from '../core/license.service';
 import { HasPermissionDirective } from '../shared/has-permission.directive';
+import { UpdateBannerComponent } from '../shared/update-banner.component';
 
 @Component({
   selector: 'app-pos-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, HasPermissionDirective],
+  imports: [RouterOutlet, RouterLink, HasPermissionDirective, UpdateBannerComponent],
   template: `
     <div class="flex h-screen flex-col overflow-hidden bg-slate-100">
       <header class="flex items-center justify-between bg-slate-900 px-5 py-2.5 text-white">
@@ -20,6 +22,13 @@ import { HasPermissionDirective } from '../shared/has-permission.directive';
           <button class="rounded bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600" (click)="logout()" data-testid="logout">Logout</button>
         </div>
       </header>
+      <app-update-banner />
+      @if (license.paymentDue() && !bannerDismissed()) {
+        <div class="flex items-center justify-between gap-4 bg-amber-100 px-5 py-2 text-sm text-amber-900" data-testid="payment-due-banner">
+          <span><strong>Payment is due.</strong> Please clear payment to avoid interruption of service.</span>
+          <button class="rounded px-2 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-200" (click)="dismissBanner()" data-testid="payment-due-dismiss">Dismiss</button>
+        </div>
+      }
       <main class="flex-1 overflow-hidden">
         <router-outlet />
       </main>
@@ -28,8 +37,13 @@ import { HasPermissionDirective } from '../shared/has-permission.directive';
 })
 export class PosLayoutComponent {
   store = inject(AuthStore);
+  license = inject(LicenseService);
+  bannerDismissed = signal(false);
   private auth = inject(AuthService);
   logout(): void {
     this.auth.logout();
+  }
+  dismissBanner(): void {
+    this.bannerDismissed.set(true);
   }
 }

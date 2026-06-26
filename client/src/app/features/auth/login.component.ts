@@ -12,11 +12,20 @@ export class LoginComponent {
   private auth = inject(AuthService);
   username = '';
   password = '';
+  submitted = signal(false);
   loading = signal(false);
   error = signal('');
 
+  get usernameError(): string {
+    return !this.username.trim() ? 'Username is required' : '';
+  }
+  get passwordError(): string {
+    return !this.password ? 'Password is required' : '';
+  }
+
   submit(): void {
-    if (!this.username || !this.password) return;
+    this.submitted.set(true);
+    if (this.usernameError || this.passwordError) return;
     this.loading.set(true);
     this.error.set('');
     this.auth.login(this.username, this.password).subscribe({

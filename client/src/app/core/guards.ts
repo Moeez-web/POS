@@ -1,6 +1,34 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { AuthStore } from './auth.store';
+import { LicenseService } from './license.service';
+
+/**
+ * Routes the user based on license state: unactivated → /activate, blocked → /payment-due,
+ * ok/payment_due → allowed. Loads status on first use. Applied to login + the app layouts.
+ */
+export const licenseGuard: CanActivateFn = async () => {
+  const lic = inject(LicenseService);
+  const router = inject(Router);
+  if (lic.state() === null) {
+    try {
+      await firstValueFrom(lic.refresh());
+    } catch {
+      router.navigateByUrl('/payment-due');
+      return false;
+    }
+  }
+  if (lic.unactivated()) {
+    router.navigateByUrl('/activate');
+    return false;
+  }
+  if (lic.blocked()) {
+    router.navigateByUrl('/payment-due');
+    return false;
+  }
+  return true; // ok or payment_due (grace)
+};
 
 export const authGuard: CanActivateFn = () => {
   const store = inject(AuthStore);

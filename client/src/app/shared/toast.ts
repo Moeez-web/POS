@@ -34,6 +34,7 @@ export class Toast {
           [class.bg-green-600]="t.type === 'success'"
           [class.bg-red-600]="t.type === 'error'"
           (click)="toast.dismiss(t.id)"
+          data-testid="toast"
         >
           {{ t.text }}
         </div>

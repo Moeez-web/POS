@@ -21,6 +21,7 @@ import { customersRouter } from './modules/customers/customers.routes';
 import { expensesRouter } from './modules/expenses/expenses.routes';
 import { returnsRouter } from './modules/returns/returns.routes';
 import { reportsRouter } from './modules/reports/reports.routes';
+import { licenseRouter } from './modules/license/license.routes';
 
 /**
  * Builds the Express app. Pass an explicit `db` in tests; in production the
@@ -37,6 +38,7 @@ export function createApp(db?: DB) {
   });
 
   app.get('/api/health', (_req, res) => res.json({ data: { ok: true } }));
+  app.use('/api/license', licenseRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/roles', rolesRouter);

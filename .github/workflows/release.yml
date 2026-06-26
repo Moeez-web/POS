@@ -1,0 +1,53 @@
+name: release
+
+# Cut a release: bump "version" in package.json, commit, then:
+#   git tag vX.Y.Z && git push --tags
+# This builds the Windows installer and PUBLISHES it (+ latest.yml) to the
+# tag's GitHub Release — the feed electron-updater reads.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # needed to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Install per package. We do NOT run the root postinstall (it chains
+      # `npm --prefix server/client install`, which is unreliable on Windows).
+      - name: Install root dependencies
+        run: npm install --ignore-scripts
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm install
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm install
+
+      - name: Build server
+        working-directory: server
+        run: npm run build
+
+      - name: Build client
+        working-directory: client
+        run: npm run build
+
+      - name: Build + publish installer
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # same-repo Releases; use a PAT to publish elsewhere

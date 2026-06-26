@@ -11,4 +11,6 @@ export const config = {
   jwtExpiresIn: process.env.POS_JWT_TTL || '12h',
   appVersion: process.env.POS_APP_VERSION || '0.1.0',
   bcryptRounds: 10,
+  installId: process.env.POS_INSTALL_ID || 'dev-install',
+  dashboardUrl: process.env.POS_DASHBOARD_URL || 'http://localhost:4400/api/device',
 };

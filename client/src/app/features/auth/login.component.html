@@ -10,10 +10,16 @@
       <div>
         <label class="label">Username</label>
         <input class="input" name="username" [(ngModel)]="username" data-testid="login-username" autocomplete="username" autofocus />
+        @if (submitted() && usernameError) {
+          <p class="mt-1 text-sm text-red-600" data-testid="login-username-error">{{ usernameError }}</p>
+        }
       </div>
       <div>
         <label class="label">Password</label>
         <input class="input" name="password" type="password" [(ngModel)]="password" data-testid="login-password" autocomplete="current-password" />
+        @if (submitted() && passwordError) {
+          <p class="mt-1 text-sm text-red-600" data-testid="login-password-error">{{ passwordError }}</p>
+        }
       </div>
 
       @if (error()) {

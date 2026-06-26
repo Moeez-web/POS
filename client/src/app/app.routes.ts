@@ -1,21 +1,32 @@
 import { Routes } from '@angular/router';
-import { authGuard, permissionGuard } from './core/guards';
+import { authGuard, permissionGuard, licenseGuard } from './core/guards';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'login' },
   {
+    // First-run device activation — public, no license/auth guard (avoids redirect loops).
+    path: 'activate',
+    loadComponent: () => import('./features/license/activate.component').then((m) => m.ActivateComponent),
+  },
+  {
+    // Block screen for payment_blocked / needs_connection / suspended — public.
+    path: 'payment-due',
+    loadComponent: () => import('./features/license/payment-due.component').then((m) => m.PaymentDueComponent),
+  },
+  {
     path: 'login',
+    canActivate: [licenseGuard],
     loadComponent: () => import('./features/auth/login.component').then((m) => m.LoginComponent),
   },
   {
     path: 'change-password',
-    canActivate: [authGuard],
+    canActivate: [authGuard, licenseGuard],
     loadComponent: () => import('./features/auth/change-password.component').then((m) => m.ChangePasswordComponent),
   },
   {
     // POS register — its own full-screen layout.
     path: 'pos',
-    canActivate: [authGuard],
+    canActivate: [authGuard, licenseGuard],
     loadComponent: () => import('./layout/pos-layout.component').then((m) => m.PosLayoutComponent),
     children: [
       {
@@ -29,7 +40,7 @@ export const routes: Routes = [
   {
     // Management area — sidebar layout.
     path: 'app',
-    canActivate: [authGuard],
+    canActivate: [authGuard, licenseGuard],
     loadComponent: () => import('./layout/dashboard-layout.component').then((m) => m.DashboardLayoutComponent),
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
