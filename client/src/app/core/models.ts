@@ -1,8 +1,9 @@
 export type LicenseState =
-  | 'unactivated'
+  | 'none'
   | 'ok'
   | 'payment_due'
-  | 'payment_blocked'
+  | 'blocked'
+  | 'clock_tampered'
   | 'needs_connection'
   | 'suspended';
 
@@ -11,6 +12,7 @@ export interface LicenseStatus {
   accessUntil: number | null;
   graceDays: number | null;
   plan: string | null;
+  installId: string;
 }
 
 export interface User {

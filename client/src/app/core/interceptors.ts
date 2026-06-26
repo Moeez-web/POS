@@ -23,12 +23,13 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   const license = inject(LicenseService);
   return next(req).pipe(
     catchError((err: HttpErrorResponse) => {
-      // 423 Locked = license enforcement. Body is { error: { code:'license_locked', state } }.
-      // Route to the block screen instead of the 401 logout path.
-      if (err.status === 423 && err.error?.error?.code === 'license_locked') {
+      // 423 Locked = license enforcement. Body is { error: { code:'license_required', state } }.
+      // Route by state: key-entry for offline states, the online block screen otherwise.
+      if (err.status === 423 && err.error?.error?.code === 'license_required') {
         const state = err.error.error.state;
         if (state) license.setState(state);
-        router.navigateByUrl('/payment-due');
+        const onlineBlock = state === 'needs_connection' || state === 'suspended';
+        router.navigateByUrl(onlineBlock ? '/payment-due' : '/activate');
         return throwError(() => err);
       }
       // A 401 from a credential-checking endpoint means "wrong password", not a dead
@@ -40,8 +41,11 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         store.clear();
         router.navigateByUrl('/login');
       } else {
-        const msg = err.error?.error ?? err.message ?? 'Something went wrong';
-        toast.show(msg, 'error');
+        // Flat errors are `{ error: "message" }`; structured ones `{ error: { code } }`
+        // are handled inline by the caller (e.g. invalid_key on the key screen) — don't toast those.
+        const e = err.error?.error;
+        if (typeof e === 'string') toast.show(e, 'error');
+        else if (!e?.code) toast.show(err.message ?? 'Something went wrong', 'error');
       }
       return throwError(() => err);
     }),

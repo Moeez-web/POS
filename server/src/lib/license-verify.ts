@@ -1,22 +1,28 @@
-import { decodeJwt, decodeProtectedHeader, importJWK, jwtVerify, errors as joseErrors } from 'jose';
-import type { JWK } from 'jose';
+import { decodeJwt, decodeProtectedHeader, importJWK, importSPKI, jwtVerify, errors as joseErrors } from 'jose';
+import type { JWK, KeyLike } from 'jose';
 import type { DB } from '../db/connection';
+import { config } from '../config';
 import * as repo from '../modules/license/license.repo';
 
 /**
- * Offline license state. Stored lowercase in `license.last_status` and returned to the client.
- * - unactivated:      no token yet → first-run activation needed
- * - ok:               normal, fully usable (offline-capable while the token is fresh)
- * - payment_due:      access lapsed but within grace → works + header banner
- * - payment_blocked:  past grace → block screen (login blocked)
- * - needs_connection: availability token expired / unverifiable / clock rolled back → must go online
- * - suspended:        revoked/suspended by the dashboard → locked
+ * Unified license state for BOTH licensing paths:
+ *  - OFFLINE manual keys (pasted by the customer; kid 'manual-1', verified by the embedded issuer key)
+ *  - ONLINE dashboard tokens (kid from JWKS; only usable once the dashboard is deployed)
+ *
+ * - none:           no/invalid token → must enter a key (offline) or activate (online)
+ * - ok:             within paid period
+ * - payment_due:    past accessUntil but within grace → works + header banner
+ * - blocked:        past grace (or offline key expired) → key-entry screen
+ * - clock_tampered: system clock wound back > 24h below the high-water mark → fix the date
+ * - needs_connection: ONLINE-only — 14-day availability token expired and dashboard unreachable
+ * - suspended:      ONLINE-only — dashboard revoked the install
  */
 export type LicenseState =
-  | 'unactivated'
+  | 'none'
   | 'ok'
   | 'payment_due'
-  | 'payment_blocked'
+  | 'blocked'
+  | 'clock_tampered'
   | 'needs_connection'
   | 'suspended';
 
@@ -27,13 +33,16 @@ export interface LicenseEval {
   plan: string | null;
 }
 
-export const BLOCKED_STATES: LicenseState[] = ['payment_blocked', 'needs_connection', 'suspended'];
+/** States that block login (HTTP 423). PAYMENT_DUE (grace) and OK do not block. */
+export const BLOCKED_STATES: LicenseState[] = ['none', 'blocked', 'clock_tampered', 'needs_connection', 'suspended'];
+/** States routed to the manual key-entry screen (/activate). */
+export const ACTIVATE_STATES: LicenseState[] = ['none', 'blocked', 'clock_tampered'];
+
+const SKEW_SECONDS = 24 * 3600; // clock-rollback tolerance
 
 /**
- * Offline-first fallback JWKS. The app refreshes this from GET {dashboard}/keys on every
- * successful online check and caches the result in `license.jwks_cache`; this constant only
- * bootstraps verification before the first online contact. Replace with the production
- * dashboard's JWKS at build time: `curl https://<dashboard>/api/device/keys`.
+ * Offline-first fallback JWKS for ONLINE dashboard tokens. Refreshed from the dashboard on every
+ * successful online check; this constant only bootstraps verification before first online contact.
  */
 export const FALLBACK_JWKS: { keys: JWK[] } = {
   keys: [
@@ -41,8 +50,6 @@ export const FALLBACK_JWKS: { keys: JWK[] } = {
     { kty: 'OKP', crv: 'Ed25519', x: 'xHalgEVFd2m3iT6THXZO_FsjwrbuHITkvar2aR-F5ZY', kid: 'k_7c5e0428', alg: 'EdDSA', use: 'sig' },
   ],
 };
-
-const SKEW_SECONDS = 60;
 
 function loadJwks(jwksCache: string | null): { keys: JWK[] } {
   if (jwksCache) {
@@ -56,78 +63,110 @@ function loadJwks(jwksCache: string | null): { keys: JWK[] } {
   return FALLBACK_JWKS;
 }
 
-/** Find the JWK matching the token's `kid` in the cached JWKS, falling back to the embedded one. */
-function findKey(jwksCache: string | null, kid: string | undefined): JWK | undefined {
-  const cached = loadJwks(jwksCache).keys.find((k) => k.kid === kid);
-  if (cached) return cached;
-  return FALLBACK_JWKS.keys.find((k) => k.kid === kid);
+/** Resolve a verification key for the token's `kid`: manual keys use the embedded issuer key. */
+async function selectKey(jwksCache: string | null, kid: string | undefined): Promise<KeyLike | null> {
+  if (kid === 'manual-1') {
+    return importSPKI(config.issuerPublicKeyPem, 'EdDSA');
+  }
+  const jwk = loadJwks(jwksCache).keys.find((k) => k.kid === kid) ?? FALLBACK_JWKS.keys.find((k) => k.kid === kid);
+  return jwk ? ((await importJWK(jwk, 'EdDSA')) as KeyLike) : null;
+}
+
+/** Verify a pasted manual key offline (no DB). Throws on any invalid/expired/wrong-install key. */
+export async function verifyManualKey(key: string): Promise<Record<string, unknown>> {
+  const header = decodeProtectedHeader(key);
+  if (header.kid !== 'manual-1') throw new Error('not a manual key');
+  const pub = await importSPKI(config.issuerPublicKeyPem, 'EdDSA');
+  const { payload } = await jwtVerify(key, pub, { issuer: 'posdash' });
+  const sub = payload.sub;
+  if (sub !== '*' && sub !== config.installId) throw new Error('key not valid for this install');
+  return payload as Record<string, unknown>;
 }
 
 /**
- * Verify the stored license token and compute the current state from the two clocks
- * (availability `exp` via the signed token; payment `accessUntil` + `graceDays` from claims).
- * Persists the computed `last_status` and advances the monotonic `last_seen_at` anchor.
+ * Verify the stored token and compute the current state. Runs the clock-rollback guard first,
+ * then evaluates the two clocks using a monotonic `effectiveNow` so winding the clock back can
+ * never extend a license. Persists last_status / last_seen_at.
  */
 export async function verifyLicense(db: DB): Promise<LicenseEval> {
   const row = repo.get(db);
   const nowSec = Math.floor(Date.now() / 1000);
+  const graceFallback = row?.grace_days ?? null;
+  const planFallback = row?.plan ?? null;
 
-  // Suspension is authoritative and sticky until a successful renew re-issues a token.
+  // Suspension (online) is authoritative and sticky until a successful renew re-issues a token.
   if (row?.last_status === 'suspended') {
-    return { state: 'suspended', accessUntil: null, graceDays: row?.grace_days ?? null, plan: row?.plan ?? null };
+    return { state: 'suspended', accessUntil: null, graceDays: graceFallback, plan: planFallback };
   }
+
+  // --- Clock-rollback guard (run first) ---
+  const lastSeenSec = row?.last_seen_at ? Math.floor(Date.parse(row.last_seen_at) / 1000) : 0;
+  if (lastSeenSec && nowSec < lastSeenSec - SKEW_SECONDS) {
+    repo.setStatus(db, 'clock_tampered'); // do NOT advance the high-water mark
+    return { state: 'clock_tampered', accessUntil: null, graceDays: graceFallback, plan: planFallback };
+  }
+  const effectiveNow = Math.max(nowSec, lastSeenSec);
+  if (nowSec > lastSeenSec) repo.setLastSeen(db, new Date(nowSec * 1000).toISOString());
 
   if (!row?.token) {
-    repo.setStatus(db, 'unactivated');
-    return { state: 'unactivated', accessUntil: null, graceDays: null, plan: null };
+    repo.setStatus(db, 'none');
+    return { state: 'none', accessUntil: null, graceDays: null, plan: null };
   }
 
-  // Clock-tamper guard: if the system clock is meaningfully earlier than the last anchor,
-  // force NEEDS_CONNECTION until an online refresh re-anchors via {dashboard}/time.
-  const lastSeenSec = row.last_seen_at ? Math.floor(Date.parse(row.last_seen_at) / 1000) : 0;
-  if (lastSeenSec && nowSec < lastSeenSec - SKEW_SECONDS) {
-    repo.setStatus(db, 'needs_connection');
-    return { state: 'needs_connection', accessUntil: null, graceDays: row.grace_days ?? null, plan: row.plan ?? null };
-  }
-
+  const mode = row.mode ?? 'online';
   let payload: Record<string, unknown>;
+  let expiredButValid = false;
   try {
     const header = decodeProtectedHeader(row.token);
-    const jwk = findKey(row.jwks_cache, header.kid);
-    if (!jwk) {
-      // Unknown signing key (likely rotated while offline) → must refresh online.
-      repo.setStatus(db, 'needs_connection');
-      return { state: 'needs_connection', accessUntil: null, graceDays: row.grace_days ?? null, plan: row.plan ?? null };
+    const key = await selectKey(row.jwks_cache, header.kid);
+    if (!key) {
+      // Unknown signing key: offline → can't trust → none; online → refresh online.
+      const state: LicenseState = mode === 'offline' ? 'none' : 'needs_connection';
+      repo.setStatus(db, state);
+      return { state, accessUntil: null, graceDays: graceFallback, plan: planFallback };
     }
-    const key = await importJWK(jwk, 'EdDSA');
-    const res = await jwtVerify(row.token, key, { issuer: 'posdash', subject: undefined });
+    // Judge expiry by effectiveNow (not wall-clock) so a rolled-back clock can't revive a key.
+    const res = await jwtVerify(row.token, key, { issuer: 'posdash', currentDate: new Date(effectiveNow * 1000) });
     payload = res.payload as Record<string, unknown>;
   } catch (err) {
-    // Expired availability token OR an untrusted/invalid signature → go online to recover.
-    void (err instanceof joseErrors.JWTExpired);
-    repo.setStatus(db, 'needs_connection');
-    return { state: 'needs_connection', accessUntil: null, graceDays: row.grace_days ?? null, plan: row.plan ?? null };
+    if (err instanceof joseErrors.JWTExpired) {
+      // Signature is valid; only the time window lapsed. Decode claims to classify.
+      payload = decodeJwt(row.token) as Record<string, unknown>;
+      expiredButValid = true;
+    } else {
+      const state: LicenseState = mode === 'offline' ? 'none' : 'needs_connection';
+      repo.setStatus(db, state);
+      return { state, accessUntil: null, graceDays: graceFallback, plan: planFallback };
+    }
+  }
+
+  // Reject a key minted for a different install.
+  const sub = payload.sub;
+  if (sub !== '*' && sub !== config.installId) {
+    repo.setStatus(db, 'none');
+    return { state: 'none', accessUntil: null, graceDays: graceFallback, plan: planFallback };
   }
 
   const accessUntil = (payload.accessUntil ?? null) as number | null;
   const graceDays = (typeof payload.graceDays === 'number' ? payload.graceDays : 0) as number;
-  const plan = (payload.plan ?? row.plan ?? null) as string | null;
+  const plan = (payload.plan ?? planFallback) as string | null;
+  const claimMode = (payload.mode as string) ?? mode;
 
   let state: LicenseState;
-  if (accessUntil === null) {
+  if (expiredButValid && claimMode !== 'offline') {
+    // Online availability token (~14d) lapsed → must go online.
+    state = 'needs_connection';
+  } else if (accessUntil === null) {
     state = 'ok'; // lifetime
-  } else if (nowSec <= accessUntil) {
+  } else if (effectiveNow <= accessUntil) {
     state = 'ok';
-  } else if (nowSec <= accessUntil + graceDays * 86400) {
+  } else if (effectiveNow <= accessUntil + graceDays * 86400) {
     state = 'payment_due';
   } else {
-    state = 'payment_blocked';
+    state = 'blocked';
   }
 
-  // Advance the monotonic anchor and persist the computed status.
   repo.setStatus(db, state);
-  if (!lastSeenSec || nowSec > lastSeenSec) repo.setLastSeen(db, new Date(nowSec * 1000).toISOString());
-
   return { state, accessUntil, graceDays, plan };
 }
 

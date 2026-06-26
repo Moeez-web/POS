@@ -1,6 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
+import { signKey, pasteKey } from './_license-helper';
 
-const ACTIVATION_CODE = 'UGCT-F92T-HK';
+const KEY = signKey();
 
 /**
  * Verifies the renderer-side auto-update UX without a real Electron build by injecting a
@@ -25,8 +26,7 @@ async function reachShell(page: Page): Promise<void> {
 
   await page.goto('/login');
   if (page.url().includes('/activate')) {
-    await page.getByTestId('activate-code').fill(ACTIVATION_CODE);
-    await page.getByTestId('activate-submit').click();
+    await pasteKey(page, KEY); // offline manual key
     await expect(page).toHaveURL(/\/login/);
   }
   // Seeded cashier (must_change_password = 0) lands straight on the POS layout shell.

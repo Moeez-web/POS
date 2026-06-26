@@ -15,16 +15,16 @@ export const licenseGuard: CanActivateFn = async () => {
     try {
       await firstValueFrom(lic.refresh());
     } catch {
-      router.navigateByUrl('/payment-due');
+      router.navigateByUrl('/activate');
       return false;
     }
   }
-  if (lic.unactivated()) {
-    router.navigateByUrl('/activate');
+  if (lic.needsKey()) {
+    router.navigateByUrl('/activate'); // none / blocked / clock_tampered → paste a key
     return false;
   }
-  if (lic.blocked()) {
-    router.navigateByUrl('/payment-due');
+  if (lic.needsOnline()) {
+    router.navigateByUrl('/payment-due'); // needs_connection / suspended (online)
     return false;
   }
   return true; // ok or payment_due (grace)

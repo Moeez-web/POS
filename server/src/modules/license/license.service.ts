@@ -1,9 +1,12 @@
 import type { DB } from '../../db/connection';
 import { config } from '../../config';
 import { AppError, ValidationError } from '../../lib/errors';
-import { verifyLicense, decodeTokenClaims, type LicenseEval } from '../../lib/license-verify';
+import { verifyLicense, verifyManualKey, decodeTokenClaims, type LicenseEval } from '../../lib/license-verify';
 import * as repo from './license.repo';
 import * as dash from './dashboard-client';
+
+/** Thrown when a pasted offline key fails verification → controller maps to 400 invalid_key. */
+export class InvalidLicenseKey extends Error {}
 
 /** Public shape returned to the Angular client. */
 export interface LicenseStatusDto {
@@ -11,15 +14,37 @@ export interface LicenseStatusDto {
   accessUntil: number | null;
   graceDays: number | null;
   plan: string | null;
+  installId: string;
 }
 
 function toDto(e: LicenseEval): LicenseStatusDto {
-  return { state: e.state, accessUntil: e.accessUntil, graceDays: e.graceDays, plan: e.plan };
+  return { state: e.state, accessUntil: e.accessUntil, graceDays: e.graceDays, plan: e.plan, installId: config.installId };
 }
 
 /** Local-only verification result (no network). */
 export async function getStatus(db: DB): Promise<LicenseStatusDto> {
   return toDto(await verifyLicense(db));
+}
+
+/** Apply a pasted OFFLINE manual key: verify with the embedded issuer key, then save it. */
+export async function manual(db: DB, key: string): Promise<LicenseStatusDto> {
+  let payload: Record<string, unknown>;
+  try {
+    payload = await verifyManualKey(key);
+  } catch {
+    throw new InvalidLicenseKey();
+  }
+  const accessUntilSec = typeof payload.accessUntil === 'number' ? payload.accessUntil : null;
+  const expSec = typeof payload.exp === 'number' ? payload.exp : null;
+  repo.saveManual(db, {
+    token: key,
+    plan: (payload.plan ?? null) as string | null,
+    access_until: accessUntilSec != null ? new Date(accessUntilSec * 1000).toISOString() : null,
+    grace_days: typeof payload.graceDays === 'number' ? payload.graceDays : null,
+    expires_at: expSec != null ? new Date(expSec * 1000).toISOString() : null,
+    last_status: 'ok',
+  });
+  return getStatus(db);
 }
 
 /** Cache the dashboard's current JWKS (required so a freshly-issued token verifies). */

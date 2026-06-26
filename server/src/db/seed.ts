@@ -116,6 +116,15 @@ export function seed(db: DB): void {
     ).run('admin', hashPassword('admin123'), 'Administrator', adminRole, now);
   }
 
+  // Ready-to-use demo manager (change the password in Users).
+  const existingManager = db.prepare('SELECT id FROM users WHERE username = ?').get('manager');
+  if (!existingManager) {
+    db.prepare(
+      `INSERT INTO users (username, password_hash, full_name, role_id, is_active, must_change_password, created_at)
+       VALUES (?, ?, ?, ?, 1, 0, ?)`,
+    ).run('manager', hashPassword('manager123'), 'Demo Manager', managerRole, new Date().toISOString());
+  }
+
   // Ready-to-use demo cashier so the POS can be tested immediately (change the password in Users).
   const existingCashier = db.prepare('SELECT id FROM users WHERE username = ?').get('cashier');
   if (!existingCashier) {

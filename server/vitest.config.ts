@@ -5,5 +5,7 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     globals: false,
+    // Licensing is infrastructure, not the feature under test — bypass the gate in unit/integration tests.
+    env: { POS_LICENSE_BYPASS: '1' },
   },
 });

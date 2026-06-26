@@ -7,6 +7,7 @@ export interface LicenseRow {
   customer_ref: number | null;
   token: string | null;
   plan: string | null;
+  mode: string | null;
   issued_at: string | null;
   token_expires_at: string | null;
   access_until: string | null;
@@ -39,7 +40,7 @@ export function saveToken(
 ): void {
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE license SET token = ?, plan = ?, issued_at = ?, token_expires_at = ?, access_until = ?,
+    `UPDATE license SET token = ?, plan = ?, mode = 'online', issued_at = ?, token_expires_at = ?, access_until = ?,
        grace_days = ?, customer_ref = ?, install_id = ?, last_status = ?, last_check_at = ?, updated_at = ?
      WHERE id = 1`,
   ).run(
@@ -53,6 +54,34 @@ export function saveToken(
     fields.install_id,
     fields.last_status,
     now,
+    now,
+  );
+}
+
+/** Save a pasted OFFLINE manual key (mode='offline'); clears online-only fields. */
+export function saveManual(
+  db: DB,
+  fields: {
+    token: string;
+    plan: string | null;
+    access_until: string | null;
+    grace_days: number | null;
+    expires_at: string | null;
+    last_status: string;
+  },
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE license SET token = ?, plan = ?, mode = 'offline', access_until = ?, grace_days = ?,
+       token_expires_at = ?, customer_ref = NULL, jwks_cache = NULL, last_status = ?, updated_at = ?
+     WHERE id = 1`,
+  ).run(
+    fields.token,
+    fields.plan,
+    fields.access_until,
+    fields.grace_days,
+    fields.expires_at,
+    fields.last_status,
     now,
   );
 }
