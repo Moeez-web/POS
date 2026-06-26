@@ -5,16 +5,18 @@ import { AuthService } from '../core/auth.service';
 import { LicenseService } from '../core/license.service';
 import { HasPermissionDirective } from '../shared/has-permission.directive';
 import { UpdateBannerComponent } from '../shared/update-banner.component';
+import { LogoComponent } from '../shared/logo.component';
 
 @Component({
   selector: 'app-pos-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, HasPermissionDirective, UpdateBannerComponent],
+  imports: [RouterOutlet, RouterLink, HasPermissionDirective, UpdateBannerComponent, LogoComponent],
   template: `
     <div class="flex h-screen flex-col overflow-hidden bg-slate-100">
       <header class="flex items-center justify-between bg-slate-900 px-5 py-2.5 text-white">
         <div class="flex items-center gap-3">
-          <span class="font-semibold">POS Register</span>
+          <app-logo [size]="22" />
+          <span class="font-semibold">CounterPro</span>
           <a *appHasPermission="'products.read'" routerLink="/app/dashboard" class="text-xs text-slate-300 hover:text-white" data-testid="to-dashboard">← Dashboard</a>
         </div>
         <div class="flex items-center gap-3 text-sm">

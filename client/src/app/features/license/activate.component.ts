@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { LicenseService } from '../../core/license.service';
+import { LogoComponent } from '../../shared/logo.component';
 import { Toast } from '../../shared/toast';
 
 /**
@@ -12,13 +13,13 @@ import { Toast } from '../../shared/toast';
 @Component({
   selector: 'app-activate',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, LogoComponent],
   template: `
     <div class="flex min-h-screen items-center justify-center p-4">
       <div class="card w-full max-w-md p-8">
         <div class="mb-6 text-center">
-          <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-xl font-bold text-white">P</div>
-          <h1 class="text-xl font-semibold">Activate this device</h1>
+          <div class="mx-auto mb-3 flex justify-center"><app-logo [size]="48" /></div>
+          <h1 class="text-xl font-semibold">Activate CounterPro</h1>
         </div>
 
         @if (clockTampered()) {
@@ -30,7 +31,7 @@ import { Toast } from '../../shared/toast';
         } @else {
           <p class="mb-4 text-sm text-slate-500">Paste the monthly license key from your provider.</p>
           <form (ngSubmit)="apply()" class="space-y-3" novalidate>
-            <textarea class="input min-h-28 font-mono text-xs" name="key" [(ngModel)]="key" placeholder="Paste your license key here" data-testid="license-key"></textarea>
+            <input class="input font-mono text-xs" name="key" [(ngModel)]="key" placeholder="Paste your license key" data-testid="license-key" />
             @if (error()) {
               <p class="text-sm text-red-600" data-testid="license-error">{{ error() }}</p>
             }

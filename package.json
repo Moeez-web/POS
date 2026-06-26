@@ -1,7 +1,7 @@
 {
   "name": "pos",
-  "version": "1.0.3",
-  "description": "POS desktop application (Electron + Angular + Express + SQLite)",
+  "version": "1.0.4",
+  "description": "CounterPro — point-of-sale desktop app (Electron + Angular + Express + SQLite)",
   "main": "electron/main.js",
   "author": "",
   "private": true,
@@ -31,8 +31,8 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.pos.desktop",
-    "productName": "POS",
+    "appId": "com.counterpro.desktop",
+    "productName": "CounterPro",
     "files": [
       "electron/**/*",
       "server/dist/**/*",
@@ -42,9 +42,10 @@
       "package.json"
     ],
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
-    "win": { "target": "nsis" },
+    "win": { "target": "nsis", "icon": "build/icon.ico" },
     "mac": { "target": "dmg" },
     "linux": { "target": "AppImage" },
     "publish": [
