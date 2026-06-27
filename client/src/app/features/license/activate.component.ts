@@ -42,8 +42,15 @@ import { Toast } from '../../shared/toast';
 
           <div class="mt-6 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
             <div class="mb-1 font-medium text-slate-600">Your Install ID</div>
-            <code class="break-all text-slate-800" data-testid="install-id">{{ installId() || '—' }}</code>
-            <p class="mt-2">Send this ID to your provider to get your monthly key.</p>
+            @if (installId()) {
+              <code class="break-all text-slate-800" data-testid="install-id">{{ installId() }}</code>
+              <p class="mt-2">Send this ID to your provider to get your monthly key.</p>
+            } @else if (serviceError()) {
+              <p class="text-red-600" data-testid="service-error">Couldn't reach the local service ({{ serviceError() }}). The app's background service may have failed to start.</p>
+              <button class="btn-ghost mt-2 w-full" (click)="retry()" data-testid="service-retry">Retry</button>
+            } @else {
+              <span class="text-slate-400" data-testid="install-id">Connecting to the local service…</span>
+            }
           </div>
         }
       </div>
@@ -57,13 +64,31 @@ export class ActivateComponent implements OnInit {
   key = '';
   loading = signal(false);
   error = signal('');
+  serviceError = signal('');
+  private attempts = 0;
 
   installId = computed(() => this.lic.installId());
   clockTampered = computed(() => this.lic.state() === 'clock_tampered');
 
   ngOnInit(): void {
-    // Load the Install ID + current state (this route is public, so it may be unloaded).
-    if (this.lic.state() === null) this.lic.refresh().subscribe({ error: () => {} });
+    this.load();
+  }
+
+  /** Load the Install ID + state; the local server may still be starting, so retry a few times. */
+  load(): void {
+    this.lic.refresh().subscribe({
+      next: () => this.serviceError.set(''),
+      error: (e: { status?: number; statusText?: string; message?: string }) => {
+        this.serviceError.set(e?.status ? `HTTP ${e.status} ${e.statusText ?? ''}`.trim() : e?.message ?? 'connection failed');
+        if (++this.attempts < 8) setTimeout(() => this.load(), 1500);
+      },
+    });
+  }
+
+  retry(): void {
+    this.attempts = 0;
+    this.serviceError.set('');
+    this.load();
   }
 
   apply(): void {

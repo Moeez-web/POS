@@ -40,7 +40,18 @@ function startServer() {
   const entry = path.join(__dirname, '..', 'server', 'dist', 'server.js');
   // Capture the API server's output to a log file so packaged-build startup failures are diagnosable
   // (there's no console in a packaged app). See userData/server.log.
-  const logFd = fs.openSync(path.join(userData, 'server.log'), 'a');
+  const logPath = path.join(userData, 'server.log');
+  const log = (m) => {
+    try {
+      fs.appendFileSync(logPath, m + '\n');
+    } catch {
+      /* ignore */
+    }
+  };
+  log(`\n=== ${new Date().toISOString()} starting server (v${app.getVersion()}) ===`);
+  log(`execPath=${process.execPath}`);
+  log(`entry=${entry} exists=${fs.existsSync(entry)}`);
+  const logFd = fs.openSync(logPath, 'a');
   serverProc = spawn(process.execPath, [entry], {
     env: {
       ...process.env,
@@ -54,13 +65,8 @@ function startServer() {
     },
     stdio: ['ignore', logFd, logFd],
   });
-  serverProc.on('error', (e) => {
-    try {
-      fs.appendFileSync(path.join(userData, 'server.log'), `\n[spawn error] ${String(e)}\n`);
-    } catch {
-      /* ignore */
-    }
-  });
+  serverProc.on('error', (e) => log(`[spawn error] ${String(e)}`));
+  serverProc.on('exit', (code, sig) => log(`[server exited] code=${code} signal=${sig}`));
 }
 
 function waitForServer() {
