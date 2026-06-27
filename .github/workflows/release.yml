@@ -47,6 +47,12 @@ jobs:
         working-directory: client
         run: npm run build
 
+      # The whole server/ ships via extraResources (incl. node_modules). Drop dev deps after
+      # building so the installer only carries the server's runtime dependencies.
+      - name: Prune server dev dependencies
+        working-directory: server
+        run: npm prune --omit=dev
+
       - name: Build + publish installer
         run: npx electron-builder --win --publish always
         env:

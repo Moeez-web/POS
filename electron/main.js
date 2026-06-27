@@ -37,7 +37,10 @@ function getInstallId(userData) {
 function startServer() {
   const userData = app.getPath('userData');
   fs.mkdirSync(userData, { recursive: true });
-  const entry = path.join(__dirname, '..', 'server', 'dist', 'server.js');
+  // Packaged: the server ships as extraResources at <resources>/server. Dev: it's in the repo.
+  const entry = app.isPackaged
+    ? path.join(process.resourcesPath, 'server', 'dist', 'server.js')
+    : path.join(__dirname, '..', 'server', 'dist', 'server.js');
   // Capture the API server's output to a log file so packaged-build startup failures are diagnosable
   // (there's no console in a packaged app). See userData/server.log.
   const logPath = path.join(userData, 'server.log');

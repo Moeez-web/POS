@@ -1,6 +1,6 @@
 {
   "name": "pos",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "CounterPro — point-of-sale desktop app (Electron + Angular + Express + SQLite)",
   "main": "electron/main.js",
   "author": "",
@@ -36,11 +36,15 @@
     "asar": false,
     "files": [
       "electron/**/*",
-      "server/dist/**/*",
-      "server/node_modules/**/*",
-      "server/package.json",
       "client/dist/client/browser/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "server",
+        "to": "server",
+        "filter": ["dist/**/*", "node_modules/**/*", "package.json"]
+      }
     ],
     "directories": {
       "output": "release",
