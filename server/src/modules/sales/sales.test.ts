@@ -57,13 +57,15 @@ describe('checkout — FIFO batch deduction & per-batch cost snapshot', () => {
     const a = sale.items.find((i: any) => i.cost_price_minor === 100);
     const b = sale.items.find((i: any) => i.cost_price_minor === 120);
     expect(a.qty).toBe(3);
-    expect(a.unit_price_minor).toBe(150);
     expect(b.qty).toBe(1);
+    // One-price model: every unit is charged the current (newest batch) price = 180,
+    // even though COGS is snapshotted per FIFO batch (100 for A, 120 for B).
+    expect(a.unit_price_minor).toBe(180);
     expect(b.unit_price_minor).toBe(180);
 
-    expect(sale.subtotal_minor).toBe(3 * 150 + 1 * 180); // 630
-    expect(sale.total_minor).toBe(630);
-    expect(sale.change_minor).toBe(70000 - 630);
+    expect(sale.subtotal_minor).toBe(4 * 180); // 720
+    expect(sale.total_minor).toBe(720);
+    expect(sale.change_minor).toBe(70000 - 720);
 
     const stock = db.prepare('SELECT id, qty_remaining FROM batches WHERE product_id = ? ORDER BY id').all(p) as any[];
     expect(stock[0].qty_remaining).toBe(0); // batch A drained

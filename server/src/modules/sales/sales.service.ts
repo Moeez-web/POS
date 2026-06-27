@@ -50,6 +50,13 @@ function resolveItem(db: DB, item: CheckoutItem, strategy: Strategy, taxRate: nu
   if (!product) throw new NotFound(`Product ${item.product_id} not found`);
   if (item.qty <= 0) throw new ValidationError('Quantity must be positive');
 
+  // Single selling price = newest batch's sale price (exactly what the POS shows for the product).
+  // Charged uniformly on every slice so cart, checkout and printed receipt always match.
+  const priced = db
+    .prepare('SELECT sale_price_minor FROM batches WHERE product_id = ? ORDER BY created_at DESC, id DESC LIMIT 1')
+    .get(item.product_id) as { sale_price_minor: number } | undefined;
+  const currentPrice = priced?.sale_price_minor ?? 0;
+
   const discountPerUnit = Math.floor((item.discount_minor ?? 0) / item.qty);
   const slices: ResolvedLine[] = [];
 
@@ -76,23 +83,21 @@ function resolveItem(db: DB, item: CheckoutItem, strategy: Strategy, taxRate: nu
     if (!batch || batch.product_id !== item.product_id) throw new NotFound('Batch not found for product');
     if (batch.qty_remaining < item.qty) throw new Conflict(`Insufficient stock for "${product.name}": only ${batch.qty_remaining} available in that batch`);
     batches.changeRemaining(db, batch.id, -item.qty);
-    pushSlice(batch, item.qty, batch.sale_price_minor);
+    pushSlice(batch, item.qty, currentPrice);
     return slices;
   }
 
-  // fifo & latest both deduct oldest-first; latest charges the newest batch's price.
+  // fifo & latest both deduct oldest-first (FIFO cost). Price is always the current price.
   const open = batches.openFifo(db, item.product_id);
   const available = open.reduce((a, b) => a + b.qty_remaining, 0);
   if (available < item.qty) throw new Conflict(`Insufficient stock for "${product.name}": only ${available} available`);
-
-  const latestPrice = strategy === 'latest' ? batches.newestWithStock(db, item.product_id)?.sale_price_minor : undefined;
 
   let need = item.qty;
   for (const batch of open) {
     if (need <= 0) break;
     const take = Math.min(need, batch.qty_remaining);
     batches.changeRemaining(db, batch.id, -take);
-    pushSlice(batch, take, latestPrice ?? batch.sale_price_minor);
+    pushSlice(batch, take, currentPrice);
     need -= take;
   }
   return slices;

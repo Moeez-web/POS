@@ -26,12 +26,20 @@ export class ReceiptService {
   @page { size: ${widthMm}mm auto; margin: 0; }
   body { width: ${widthMm}mm; margin: 0; padding: 6px 8px; font-family: 'Courier New', monospace; font-size: 12px; color:#000; }
   .center{text-align:center} .shop{font-size:15px;font-weight:bold} .muted{font-size:11px}
+  .brand{font-size:13px;font-weight:bold;letter-spacing:.5px;margin-top:2px} .logo{display:block;margin:0 auto}
   hr{border:none;border-top:1px dashed #000;margin:6px 0}
   table{width:100%;border-collapse:collapse} td{padding:1px 0;vertical-align:top}
   .r{text-align:right} .c{text-align:center} .grand{font-size:14px;font-weight:bold}
   .promo{margin-top:8px;font-size:10px}
 </style></head><body>
   <div class="center">
+    <svg class="logo" width="40" height="40" viewBox="0 0 64 64" fill="none" stroke="#000" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 25 L18 15 H46 L50 25 Z"/>
+      <path d="M14 25 q4.5 5 9 0 q4.5 5 9 0 q4.5 5 9 0 q4.5 5 9 0"/>
+      <path d="M18 30 V49 H46 V30"/>
+      <path d="M28 49 V38 H36 V49"/>
+    </svg>
+    <div class="brand">CounterPro</div>
     <div class="shop">${this.esc(s['shop_name'] || 'My Store')}</div>
     ${addr ? `<div class="muted">${addr}</div>` : ''}
     ${phone ? `<div class="muted">Tel: ${phone}</div>` : ''}

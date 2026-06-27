@@ -52,6 +52,18 @@ export interface Product {
   purchase_price_minor?: number | null;
 }
 
+export interface Batch {
+  id: number;
+  product_id: number;
+  batch_no: string | null;
+  purchase_price_minor: number;
+  sale_price_minor: number;
+  qty_received: number;
+  qty_remaining: number;
+  expiry_date: string | null;
+  created_at: string;
+}
+
 export interface SaleItem {
   id: number;
   product_id: number;

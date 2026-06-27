@@ -5,7 +5,7 @@ import { MoneyPipe } from '../../shared/money.pipe';
 import { HasPermissionDirective } from '../../shared/has-permission.directive';
 import { PaginatorComponent } from '../../shared/paginator.component';
 import { Toast } from '../../shared/toast';
-import type { Page, Product } from '../../core/models';
+import type { Batch, Page, Product } from '../../core/models';
 
 interface Ref { id: number; name: string }
 
@@ -42,6 +42,10 @@ export class ProductsComponent {
   stockForm = { qty: 0, cost_price: 0, sale_price: 0 };
   managing = signal<Product | null>(null);
   scanManage = '';
+  // batch breakdown (stock / sale price / cost per batch)
+  viewingBatches = signal<Product | null>(null);
+  batchList = signal<Batch[]>([]);
+  batchesLoading = signal(false);
 
   constructor() {
     this.api.get<Ref[]>('/categories').subscribe((c) => this.categories.set(c));
@@ -134,6 +138,17 @@ export class ProductsComponent {
   // ── remove (soft-delete, frees SKU + barcodes) ──
   deactivate(p: Product): void {
     this.api.delete(`/products/${p.id}`).subscribe({ next: () => { this.toast.show('Product removed', 'success'); this.load(); } });
+  }
+
+  // ── batch breakdown ──
+  openBatches(p: Product): void {
+    this.viewingBatches.set(p);
+    this.batchList.set([]);
+    this.batchesLoading.set(true);
+    this.api.get<Batch[]>(`/products/${p.id}/batches`).subscribe({
+      next: (b) => { this.batchList.set(b); this.batchesLoading.set(false); },
+      error: () => this.batchesLoading.set(false),
+    });
   }
 
   // ── barcodes ──
