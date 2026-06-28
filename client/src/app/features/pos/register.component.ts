@@ -14,6 +14,19 @@ interface Cart {
   lines: CartLine[];
 }
 
+interface QuoteLine {
+  product_id: number;
+  qty: number;
+  line_total_minor: number;
+  unit_price_minor: number;
+}
+interface QuoteResult {
+  lines: QuoteLine[];
+  subtotal_minor: number;
+  tax_minor: number;
+  total_minor: number;
+}
+
 const STORE_KEY = 'pos_carts';
 
 @Component({
@@ -74,13 +87,47 @@ export class RegisterComponent implements AfterViewInit {
 
   cart = computed(() => this.carts().find((c) => c.id === this.activeId())?.lines ?? []);
 
-  subtotal = computed(() => this.cart().reduce((a, l) => a + (l.product.sale_price_minor ?? 0) * l.qty - l.discount_minor, 0));
-  tax = computed(() =>
-    this.cart().reduce((a, l) => {
-      const lt = (l.product.sale_price_minor ?? 0) * l.qty - l.discount_minor;
-      return a + Math.round((lt * l.product.tax_rate) / 100);
-    }, 0),
-  );
+  // The cart is priced by the server (FIFO) via /sales/quote, so the on-screen totals and each
+  // line exactly equal what the receipt will print. Falls back to the product price while loading.
+  quote = signal<QuoteResult | null>(null);
+  private quoteSeq = 0;
+  private quoteTimer: ReturnType<typeof setTimeout> | null = null;
+
+  subtotal = computed(() => this.quote()?.subtotal_minor ?? this.fallbackSubtotal());
+  tax = computed(() => this.quote()?.tax_minor ?? 0);
+
+  private fallbackSubtotal(): number {
+    return this.cart().reduce((a, l) => a + (l.product.sale_price_minor ?? 0) * l.qty - l.discount_minor, 0);
+  }
+
+  /** FIFO line total for a cart row (from the server quote); falls back to product price. */
+  lineTotal(l: CartLine): number {
+    const q = this.quote()?.lines.find((x) => x.product_id === l.product.id);
+    return q ? q.line_total_minor : (l.product.sale_price_minor ?? 0) * l.qty - l.discount_minor;
+  }
+  /** Effective per-unit price for the row (line total ÷ qty), so it reflects any FIFO batch split. */
+  unitPrice(l: CartLine): number {
+    return l.qty > 0 ? Math.round(this.lineTotal(l) / l.qty) : (l.product.sale_price_minor ?? 0);
+  }
+
+  private scheduleQuote(items: { product_id: number; qty: number; discount_minor: number }[]): void {
+    if (this.quoteTimer) clearTimeout(this.quoteTimer);
+    const seq = ++this.quoteSeq;
+    this.quoteTimer = setTimeout(() => {
+      if (!items.length) {
+        this.quote.set(null);
+        return;
+      }
+      this.api.post<QuoteResult>('/sales/quote', { items }).subscribe({
+        next: (q) => {
+          if (seq === this.quoteSeq) this.quote.set(q);
+        },
+        error: () => {
+          /* keep the last quote; any real stock issue is enforced at checkout */
+        },
+      });
+    }, 120);
+  }
   discountMinor = computed(() => {
     const v = Number(this.discountValue()) || 0;
     if (v <= 0) return 0;
@@ -117,6 +164,11 @@ export class RegisterComponent implements AfterViewInit {
   constructor() {
     // Persist carts whenever they change.
     effect(() => localStorage.setItem(STORE_KEY, JSON.stringify(this.carts())));
+    // Re-price the active cart on the server (FIFO) whenever it changes, debounced.
+    effect(() => {
+      const items = this.cart().map((l) => ({ product_id: l.product.id, qty: l.qty, discount_minor: l.discount_minor }));
+      this.scheduleQuote(items);
+    });
     this.api.get<Record<string, string>>('/settings').subscribe((s) => this.settings.set(s));
   }
 

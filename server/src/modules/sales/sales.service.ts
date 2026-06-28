@@ -29,6 +29,7 @@ type Strategy = 'fifo' | 'cashier' | 'latest';
 
 interface ResolvedLine {
   product_id: number;
+  product_name: string;
   batch_id: number;
   qty: number;
   unit_price_minor: number;
@@ -39,68 +40,103 @@ interface ResolvedLine {
 }
 
 /**
- * Resolve one cart item into one or more sale-item slices, deducting batch stock per the
- * admin strategy. FIFO/latest may split a line across batches; cashier uses a chosen batch.
- * Each slice snapshots that batch's purchase price as cost (per-batch actual costing).
+ * Resolve cart items into sale-item slices using FIFO PRICING: stock is consumed oldest-batch
+ * first and each slice is charged that batch's own sale price (so old stock sells at its old
+ * price, new stock at the new price). 'latest' charges the newest price; 'cashier' uses a chosen
+ * batch. Cost is always the slice's batch purchase price (FIFO costing).
+ *
+ * READ-ONLY: it tracks remaining qty in memory (never mutates the DB), so the exact same function
+ * powers both the cart quote and the checkout — guaranteeing the cart total equals the receipt.
  */
-function resolveItem(db: DB, item: CheckoutItem, strategy: Strategy, taxRate: number): ResolvedLine[] {
-  const product = db.prepare('SELECT * FROM products WHERE id = ? AND is_active = 1').get(item.product_id) as
-    | { id: number; name: string }
-    | undefined;
-  if (!product) throw new NotFound(`Product ${item.product_id} not found`);
-  if (item.qty <= 0) throw new ValidationError('Quantity must be positive');
+function resolveSlices(db: DB, items: CheckoutItem[], strategy: Strategy): ResolvedLine[] {
+  const out: ResolvedLine[] = [];
+  const working = new Map<number, number>(); // batch_id -> remaining (in-memory working copy)
+  const remOf = (b: batches.Batch) => (working.has(b.id) ? working.get(b.id)! : b.qty_remaining);
 
-  // Single selling price = newest batch's sale price (exactly what the POS shows for the product).
-  // Charged uniformly on every slice so cart, checkout and printed receipt always match.
-  const priced = db
-    .prepare('SELECT sale_price_minor FROM batches WHERE product_id = ? ORDER BY created_at DESC, id DESC LIMIT 1')
-    .get(item.product_id) as { sale_price_minor: number } | undefined;
-  const currentPrice = priced?.sale_price_minor ?? 0;
+  for (const item of items) {
+    const product = db.prepare('SELECT id, name, tax_rate FROM products WHERE id = ? AND is_active = 1').get(item.product_id) as
+      | { id: number; name: string; tax_rate: number }
+      | undefined;
+    if (!product) throw new NotFound(`Product ${item.product_id} not found`);
+    if (item.qty <= 0) throw new ValidationError('Quantity must be positive');
 
-  const discountPerUnit = Math.floor((item.discount_minor ?? 0) / item.qty);
-  const slices: ResolvedLine[] = [];
+    const taxRate = product.tax_rate;
+    const discountPerUnit = Math.floor((item.discount_minor ?? 0) / item.qty);
+    const push = (batch: batches.Batch, qty: number, priceMinor: number) => {
+      working.set(batch.id, remOf(batch) - qty);
+      const discount = discountPerUnit * qty;
+      const lineTotal = priceMinor * qty - discount;
+      out.push({
+        product_id: item.product_id,
+        product_name: product.name,
+        batch_id: batch.id,
+        qty,
+        unit_price_minor: priceMinor,
+        cost_price_minor: batch.purchase_price_minor,
+        discount_minor: discount,
+        line_total_minor: lineTotal,
+        tax_minor: Math.round((lineTotal * taxRate) / 100),
+      });
+    };
 
-  const pushSlice = (batch: batches.Batch, qty: number, priceMinor: number) => {
-    const gross = priceMinor * qty;
-    const discount = discountPerUnit * qty;
-    const lineTotal = gross - discount;
-    const tax = Math.round((lineTotal * taxRate) / 100);
-    slices.push({
-      product_id: item.product_id,
-      batch_id: batch.id,
-      qty,
-      unit_price_minor: priceMinor,
-      cost_price_minor: batch.purchase_price_minor,
-      discount_minor: discount,
-      line_total_minor: lineTotal,
-      tax_minor: tax,
-    });
+    if (strategy === 'cashier') {
+      if (!item.batch_id) throw new ValidationError('Batch must be selected for this item');
+      const batch = batches.byId(db, item.batch_id);
+      if (!batch || batch.product_id !== item.product_id) throw new NotFound('Batch not found for product');
+      if (remOf(batch) < item.qty) throw new Conflict(`Insufficient stock for "${product.name}": only ${remOf(batch)} available in that batch`);
+      push(batch, item.qty, batch.sale_price_minor);
+      continue;
+    }
+
+    const open = batches.openFifo(db, item.product_id);
+    const available = open.reduce((a, b) => a + remOf(b), 0);
+    if (available < item.qty) throw new Conflict(`Insufficient stock for "${product.name}": only ${available} available`);
+    const latestPrice = strategy === 'latest' ? batches.newestWithStock(db, item.product_id)?.sale_price_minor : undefined;
+
+    let need = item.qty;
+    for (const batch of open) {
+      if (need <= 0) break;
+      const avail = remOf(batch);
+      if (avail <= 0) continue;
+      const take = Math.min(need, avail);
+      push(batch, take, latestPrice ?? batch.sale_price_minor);
+      need -= take;
+    }
+  }
+  return out;
+}
+
+export interface QuoteResult {
+  lines: { product_id: number; qty: number; line_total_minor: number; unit_price_minor: number }[];
+  slices: ResolvedLine[];
+  subtotal_minor: number;
+  tax_minor: number;
+  discount_minor: number;
+  total_minor: number;
+}
+
+/** Price a cart WITHOUT selling (read-only) — drives the POS cart so it matches the receipt exactly. */
+export function quote(db: DB, input: CheckoutInput): QuoteResult {
+  const strategy = (getSetting(db, 'batch_selection_strategy', 'fifo') as Strategy) || 'fifo';
+  const slices = resolveSlices(db, input.items ?? [], strategy);
+  const subtotal = slices.reduce((a, s) => a + s.line_total_minor, 0);
+  const tax = slices.reduce((a, s) => a + s.tax_minor, 0);
+  const cartDiscount = input.discount_minor ?? 0;
+  const byProduct = new Map<number, { product_id: number; qty: number; line_total_minor: number; unit_price_minor: number }>();
+  for (const s of slices) {
+    const e = byProduct.get(s.product_id) ?? { product_id: s.product_id, qty: 0, line_total_minor: 0, unit_price_minor: s.unit_price_minor };
+    e.qty += s.qty;
+    e.line_total_minor += s.line_total_minor;
+    byProduct.set(s.product_id, e);
+  }
+  return {
+    lines: [...byProduct.values()],
+    slices,
+    subtotal_minor: subtotal,
+    tax_minor: tax,
+    discount_minor: cartDiscount,
+    total_minor: subtotal - cartDiscount + tax,
   };
-
-  if (strategy === 'cashier') {
-    if (!item.batch_id) throw new ValidationError('Batch must be selected for this item');
-    const batch = batches.byId(db, item.batch_id);
-    if (!batch || batch.product_id !== item.product_id) throw new NotFound('Batch not found for product');
-    if (batch.qty_remaining < item.qty) throw new Conflict(`Insufficient stock for "${product.name}": only ${batch.qty_remaining} available in that batch`);
-    batches.changeRemaining(db, batch.id, -item.qty);
-    pushSlice(batch, item.qty, currentPrice);
-    return slices;
-  }
-
-  // fifo & latest both deduct oldest-first (FIFO cost). Price is always the current price.
-  const open = batches.openFifo(db, item.product_id);
-  const available = open.reduce((a, b) => a + b.qty_remaining, 0);
-  if (available < item.qty) throw new Conflict(`Insufficient stock for "${product.name}": only ${available} available`);
-
-  let need = item.qty;
-  for (const batch of open) {
-    if (need <= 0) break;
-    const take = Math.min(need, batch.qty_remaining);
-    batches.changeRemaining(db, batch.id, -take);
-    pushSlice(batch, take, currentPrice);
-    need -= take;
-  }
-  return slices;
 }
 
 export function checkout(db: DB, input: CheckoutInput, user: AuthUser) {
@@ -118,11 +154,7 @@ export function checkout(db: DB, input: CheckoutInput, user: AuthUser) {
       customerId = Number(info.lastInsertRowid);
     }
 
-    const allSlices: ResolvedLine[] = [];
-    for (const item of input.items) {
-      const taxRate = (db.prepare('SELECT tax_rate FROM products WHERE id = ?').get(item.product_id) as { tax_rate: number }).tax_rate;
-      allSlices.push(...resolveItem(db, item, strategy, taxRate));
-    }
+    const allSlices = resolveSlices(db, input.items, strategy);
 
     const subtotal = allSlices.reduce((a, s) => a + s.line_total_minor, 0);
     const tax = allSlices.reduce((a, s) => a + s.tax_minor, 0);
@@ -161,6 +193,7 @@ export function checkout(db: DB, input: CheckoutInput, user: AuthUser) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const s of allSlices) {
+      batches.changeRemaining(db, s.batch_id, -s.qty); // deduct stock (slicing is read-only)
       insItem.run(saleId, s.product_id, s.batch_id, s.qty, s.unit_price_minor, s.cost_price_minor, s.discount_minor, s.line_total_minor);
       recordMovement(db, {
         product_id: s.product_id,

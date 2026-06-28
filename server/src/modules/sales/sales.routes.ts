@@ -57,6 +57,11 @@ salesRouter.post('/', requirePermission('sales.create'), validate(checkoutSchema
   res.status(201).json({ data: service.checkout(req.db, req.body, req.user!) });
 });
 
+// Price a cart without selling (FIFO breakdown + totals) so the POS shows exactly what the receipt prints.
+salesRouter.post('/quote', requirePermission('sales.create'), validate(checkoutSchema), (req: Request, res: Response) => {
+  res.json({ data: service.quote(req.db, req.body) });
+});
+
 salesRouter.delete('/:id', requirePermission('sales.delete'), (req: Request, res: Response) => {
   res.json({ data: service.remove(req.db, Number(req.params.id), req.user!) });
 });

@@ -58,18 +58,36 @@ describe('checkout — FIFO batch deduction & per-batch cost snapshot', () => {
     const b = sale.items.find((i: any) => i.cost_price_minor === 120);
     expect(a.qty).toBe(3);
     expect(b.qty).toBe(1);
-    // One-price model: every unit is charged the current (newest batch) price = 180,
-    // even though COGS is snapshotted per FIFO batch (100 for A, 120 for B).
-    expect(a.unit_price_minor).toBe(180);
+    // FIFO pricing: each slice charged its own batch's price (A=150, B=180), cost per batch.
+    expect(a.unit_price_minor).toBe(150);
     expect(b.unit_price_minor).toBe(180);
 
-    expect(sale.subtotal_minor).toBe(4 * 180); // 720
-    expect(sale.total_minor).toBe(720);
-    expect(sale.change_minor).toBe(70000 - 720);
+    expect(sale.subtotal_minor).toBe(3 * 150 + 1 * 180); // 630
+    expect(sale.total_minor).toBe(630);
+    expect(sale.change_minor).toBe(70000 - 630);
 
     const stock = db.prepare('SELECT id, qty_remaining FROM batches WHERE product_id = ? ORDER BY id').all(p) as any[];
     expect(stock[0].qty_remaining).toBe(0); // batch A drained
     expect(stock[1].qty_remaining).toBe(4); // batch B 5 - 1
+  });
+
+  it('quote prices the cart by FIFO (matches checkout) without selling', async () => {
+    const p = await makeProduct();
+    await purchase(p, 3, 100, 150); // batch A
+    await purchase(p, 5, 120, 180); // batch B
+
+    const q = await request(app)
+      .post('/api/sales/quote')
+      .set(auth(adminToken))
+      .send({ items: [{ product_id: p, qty: 4 }] });
+
+    expect(q.status).toBe(200);
+    expect(q.body.data.subtotal_minor).toBe(3 * 150 + 1 * 180); // 630 — same FIFO total the receipt will show
+    expect(q.body.data.lines[0].line_total_minor).toBe(630);
+
+    // read-only: stock untouched
+    const left = db.prepare('SELECT COALESCE(SUM(qty_remaining),0) s FROM batches WHERE product_id = ?').get(p) as any;
+    expect(Number(left.s)).toBe(8);
   });
 
   it('rejects selling more than total stock with 409 and rolls back (no stock change)', async () => {
